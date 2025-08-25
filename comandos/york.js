@@ -47,7 +47,7 @@ module.exports = {
         } else if (dano >= 1000) {
             mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Tienes que mejorar para pegar como York.`;
         } else {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Debes mejorar tu técnica para alcanzar un buen daño. mejorate el set manco att: York`;
+            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Debes mejorar tu técnica para alcanzar un buen daño. Mejorate el set manco att: York`;
         }
         
         // Envía el mensaje completo al canal
