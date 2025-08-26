@@ -1,63 +1,107 @@
-// index.js
-const fs = require('node:fs');
-const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, Events } = require('discord.js');
-const dotenv = require('dotenv');
+// pepito.js
 
-dotenv.config();
-
-const token = process.env.DISCORD_TOKEN;
-const prefix = '!'; // Define el prefijo que usas para tus comandos
+require('dotenv').config();
+const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const fs = require('fs');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-    ],
+        GatewayIntentBits.GuildMembers,
+    ]
 });
 
-// Colección para los puntos de los usuarios
-const puntosUsuarios = new Map();
-client.puntosUsuarios = puntosUsuarios;
+// Colección para almacenar los puntos de los usuarios
+client.puntosUsuarios = new Collection();
 
-// Colección para los comandos
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'comandos');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const dataFilePath = './puntos.json';
 
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    // Agrega el comando a la colección
-    if ('name' in command && 'execute' in command) {
-        client.commands.set(command.name, command);
-    } else {
-        console.log(`[WARNING] El archivo de comando en ${filePath} no tiene las propiedades "name" o "execute" requeridas.`);
+if (fs.existsSync(dataFilePath)) {
+    const data = fs.readFileSync(dataFilePath, 'utf8');
+    const puntos = JSON.parse(data);
+    for (const userId in puntos) {
+        client.puntosUsuarios.set(userId, puntos[userId]);
     }
+    console.log('Puntos cargados desde puntos.json');
 }
 
-client.on(Events.ClientReady, readyClient => {
-    console.log(`¡Listo! Iniciado como ${readyClient.user.tag}`);
+function guardarPuntos() {
+    const puntos = Object.fromEntries(client.puntosUsuarios);
+    const data = JSON.stringify(puntos, null, 2);
+    fs.writeFileSync(dataFilePath, data, 'utf8');
+    console.log('Puntos guardados en puntos.json');
+}
+
+// **AGREGAR la función guardarPuntos al cliente para que sea accesible desde otros archivos**
+client.guardarPuntos = guardarPuntos;
+
+client.commands = new Collection();
+const commandFiles = fs.readdirSync('./comandos').filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+    const command = require(`./comandos/${file}`);
+    client.commands.set(command.name, command);
+}
+
+// **MODIFICACIÓN DEL CÓDIGO**
+client.on('messageCreate', message => {
+    if (message.author.bot) return;
+
+    const categoriaPadre = message.channel.parent;
+    const subcanalNombre = message.channel.name;
+
+    let puntosASumar = 0;
+
+    if (categoriaPadre && categoriaPadre.name === 'defensa') {
+        const puntosDefensa = { 'VS 1': 2, 'VS 2': 4, 'VS 3': 6, 'VS 4': 8, 'VS 5': 10 };
+        puntosASumar = puntosDefensa[subcanalNombre] || 0;
+    } else if (categoriaPadre && categoriaPadre.name === 'tiempo') {
+        const puntosTiempo = { '5 min': 1, '10 min': 3, '20 min': 5, '30 min': 7, '40 min': 9 };
+        puntosASumar = puntosTiempo[subcanalNombre] || 0;
+    } else {
+        return; // El mensaje no está en una de las categorías válidas
+    }
+
+    const usuariosMencionados = message.mentions.users;
+
+    if (usuariosMencionados.size > 0 && puntosASumar > 0) {
+        const puntosUsuarios = client.puntosUsuarios;
+
+        usuariosMencionados.forEach(usuarioMencionado => {
+            const userId = usuarioMencionado.id;
+
+            if (!puntosUsuarios.has(userId)) {
+                puntosUsuarios.set(userId, { defensa: 0 });
+            }
+
+            const puntosActuales = puntosUsuarios.get(userId);
+            puntosActuales.defensa += puntosASumar;
+            puntosUsuarios.set(userId, puntosActuales);
+        });
+
+        guardarPuntos();
+        message.channel.send(`Se han añadido **${puntosASumar}** puntos de defensa a ${usuariosMencionados.size} usuario(s).`);
+    }
 });
 
-// Manejo de mensajes para comandos de prefijo
-client.on(Events.MessageCreate, message => {
-    if (!message.content.startsWith(prefix) || message.author.bot) return;
+client.on('messageCreate', message => {
+    if (!message.content.startsWith('!')) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const args = message.content.slice(1).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
-    const command = client.commands.get(commandName);
+    if (!client.commands.has(commandName)) return;
 
-    if (!command) return;
+    const command = client.commands.get(commandName);
 
     try {
         command.execute(message, args);
     } catch (error) {
         console.error(error);
-        message.reply('Hubo un error al ejecutar este comando.');
+        message.reply('Hubo un error al ejecutar ese comando!');
     }
 });
 
-client.login(token);
+client.login(process.env.DISCORD_TOKEN);
