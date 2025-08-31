@@ -1,0 +1,12 @@
+modules = ["nodejs-20"]
+run = "node Pepito.js"
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+run = ["sh", "-c", "node Pepito.js"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
