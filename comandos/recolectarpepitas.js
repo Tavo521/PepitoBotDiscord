@@ -32,7 +32,7 @@ module.exports = {
 
         // Realiza los cálculos con los valores totales
         const sumaTotal = inventarioTotal + prismaTotal;
-        const gastos = Math.ceil(sumaTotal * 0.17);
+        const gastos = Math.ceil(sumaTotal * 0.2);
         const subtotal = sumaTotal - gastos;
         const totalAPagar = prismaTotal - gastos;
 
