@@ -11,7 +11,7 @@ module.exports = {
 
         let mensajeTabla = `\`\`\`
 --------------------------------------------------------------------------------------------------------------------------------
-| Personaje       | Inventario  | Prisma      | Gastos (-17%) | SubTotal    | Total a Pagar |
+| Personaje       | Inventario  | Prisma      | Gastos (-20%) | SubTotal    | Total a Pagar |
 --------------------------------------------------------------------------------------------------------------------------------\n`;
 
         let totalFinalAPagar = 0;
