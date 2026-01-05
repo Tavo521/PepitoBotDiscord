@@ -56,7 +56,7 @@ client.on("messageCreate", (message) => {
 
     let puntosASumar = 0;
 
-    if (categoriaPadre && categoriaPadre.name === "defensa") {
+    if (categoriaPadre && categoriaPadre.name === "defensa-ganadas") {
         const puntosDefensa = {
             "VS 1": 2,
             "VS 2": 4,
@@ -65,7 +65,7 @@ client.on("messageCreate", (message) => {
             "VS 5": 10,
         };
         puntosASumar = puntosDefensa[subcanalNombre] || 0;
-    } else if (categoriaPadre && categoriaPadre.name === "tiempo") {
+    } else if (categoriaPadre && categoriaPadre.name === "tiempo-perdidas") {
         const puntosTiempo = {
             "5 min": 1,
             "10 min": 3,
@@ -121,10 +121,3 @@ client.on("messageCreate", (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-// EXPRESS SERVER
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => res.send("Bot is running!"));
-app.listen(3000, () => console.log("Web server ready"));
