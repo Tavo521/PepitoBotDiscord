@@ -1,8 +1,8 @@
 // pepito.js
-
 require("dotenv").config();
-const { Client, Collection, GatewayIntentBits } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events } = require("discord.js");
 const fs = require("fs");
+const path = require("path"); // Importante para manejar rutas
 
 const client = new Client({
     intents: [
@@ -13,10 +13,9 @@ const client = new Client({
     ],
 });
 
-// Colección para almacenar los puntos de los usuarios
+// --- Lógica de Puntos ---
 client.puntosUsuarios = new Collection();
-
-const dataFilePath = "./puntos.json";
+const dataFilePath = "./puntos.json";4
 
 if (fs.existsSync(dataFilePath)) {
     const data = fs.readFileSync(dataFilePath, "utf8");
@@ -33,21 +32,27 @@ function guardarPuntos() {
     fs.writeFileSync(dataFilePath, data, "utf8");
     console.log("Puntos guardados en puntos.json");
 }
-
-// **AGREGAR la función guardarPuntos al cliente para que sea accesible desde otros archivos**
 client.guardarPuntos = guardarPuntos;
 
+// --- Carga de Comandos ---
 client.commands = new Collection();
-const commandFiles = fs
-    .readdirSync("./comandos")
-    .filter((file) => file.endsWith(".js"));
+const commandsPath = path.join(__dirname, "comandos");
+const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
 
 for (const file of commandFiles) {
-    const command = require(`./comandos/${file}`);
-    client.commands.set(command.name, command);
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+    
+    // Ajuste para Slash Commands: Usamos command.data.name si existe, si no, command.name
+    const name = command.data ? command.data.name : command.name;
+    
+    if (name) {
+        client.commands.set(name, command);
+        console.log(`Comando cargado: ${name}`);
+    }
 }
 
-// **MODIFICACIÓN DEL CÓDIGO**
+// --- EVENTO 1: Lógica de Puntos por Categoría (Tu código original) ---
 client.on("messageCreate", (message) => {
     if (message.author.bot) return;
 
@@ -57,60 +62,57 @@ client.on("messageCreate", (message) => {
     let puntosASumar = 0;
 
     if (categoriaPadre && categoriaPadre.name === "defensa-ganadas") {
-        const puntosDefensa = {
-            "VS 1": 2,
-            "VS 2": 4,
-            "VS 3": 6,
-            "VS 4": 8,
-            "VS 5": 10,
-        };
+        const puntosDefensa = { "VS 1": 2, "VS 2": 4, "VS 3": 6, "VS 4": 8, "VS 5": 10 };
         puntosASumar = puntosDefensa[subcanalNombre] || 0;
     } else if (categoriaPadre && categoriaPadre.name === "tiempo-perdidas") {
-        const puntosTiempo = {
-            "5 min": 1,
-            "10 min": 3,
-            "20 min": 5,
-            "30 min": 7,
-            "40 min": 9,
-        };
+        const puntosTiempo = { "5 min": 1, "10 min": 3, "20 min": 5, "30 min": 7, "40 min": 9 };
         puntosASumar = puntosTiempo[subcanalNombre] || 0;
     } else {
-        return; // El mensaje no está en una de las categorías válidas
+        return;
     }
 
     const usuariosMencionados = message.mentions.users;
 
     if (usuariosMencionados.size > 0 && puntosASumar > 0) {
-        const puntosUsuarios = client.puntosUsuarios;
-
         usuariosMencionados.forEach((usuarioMencionado) => {
             const userId = usuarioMencionado.id;
-
-            if (!puntosUsuarios.has(userId)) {
-                puntosUsuarios.set(userId, { defensa: 0 });
+            if (!client.puntosUsuarios.has(userId)) {
+                client.puntosUsuarios.set(userId, { defensa: 0 });
             }
-
-            const puntosActuales = puntosUsuarios.get(userId);
+            const puntosActuales = client.puntosUsuarios.get(userId);
             puntosActuales.defensa += puntosASumar;
-            puntosUsuarios.set(userId, puntosActuales);
+            client.puntosUsuarios.set(userId, puntosActuales);
         });
-
         guardarPuntos();
-        message.channel.send(
-            `Se han añadido **${puntosASumar}** puntos de defensa a ${usuariosMencionados.size} usuario(s).`,
-        );
+        message.channel.send(`Se han añadido **${puntosASumar}** puntos de defensa a ${usuariosMencionados.size} usuario(s).`);
     }
 });
 
+// --- EVENTO 2: Slash Commands (NUEVO) ---
+client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+
+    try {
+        console.log(`Ejecutando slash command: ${interaction.commandName}`);
+        await command.execute(interaction);
+    } catch (error) {
+        console.error(error);
+        await interaction.reply({ content: "Hubo un error al ejecutar este comando!", ephemeral: true });
+    }
+});
+
+// --- EVENTO 3: Prefijo antiguo ! (Por si aún usas alguno) ---
 client.on("messageCreate", (message) => {
-    if (!message.content.startsWith("!")) return;
+    if (!message.content.startsWith("!") || message.author.bot) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
-
-    if (!client.commands.has(commandName)) return;
-
     const command = client.commands.get(commandName);
+
+    if (!command || command.data) return; // Si tiene .data, es un Slash Command y se ignora aquí
 
     try {
         command.execute(message, args);
@@ -118,6 +120,10 @@ client.on("messageCreate", (message) => {
         console.error(error);
         message.reply("Hubo un error al ejecutar ese comando!");
     }
+});
+
+client.once("ready", () => {
+    console.log(`Bot encendido como ${client.user.tag}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
