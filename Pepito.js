@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, Collection, GatewayIntentBits, Events } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const { Sequelize, DataTypes } = require('sequelize');
@@ -13,29 +13,22 @@ const client = new Client({
     ],
 });
 
-// --- PUNTO 2: Configuración de la Base de Datos (SQLite) ---
+// --- CONFIGURACIÓN DE BASE DE DATOS ---
 const sequelize = new Sequelize({
     dialect: 'sqlite',
     logging: false,
     storage: 'database.sqlite',
-    dialectModule: require('sqlite3'), // Cambiado de @vscode/sqlite3 a sqlite3
+    dialectModule: require('sqlite3'),
 });
 
 const Puntos = sequelize.define('Puntos', {
-    userId: {
-        type: DataTypes.STRING,
-        primaryKey: true,
-    },
-    defensa: {
-        type: DataTypes.INTEGER,
-        defaultValue: 0,
-    },
+    userId: { type: DataTypes.STRING, primaryKey: true },
+    defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
-// Sincronizar Base de Datos al iniciar
 Puntos.sync();
 
-// --- Carga de Comandos ---
+// --- CARGA DE COMANDOS ---
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "comandos");
 const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
@@ -50,63 +43,109 @@ for (const file of commandFiles) {
     }
 }
 
-// --- EVENTO 1: PUNTO 3 - Actualización de la lógica de guardado con SQLite ---
+// --- EVENTO 1: Solicitud de Puntos con Botones ---
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
-
-    // Validación del canal "evidencias"
     if (message.channel.name.toLowerCase() !== "evidencias") return;
 
     const puntosKeywords = {
-        'atkperco': 5, 'atkprisma': 2,
-        'ava': 5,
+        'atkperco': 5, 'atkprisma': 2, 'ava': 5,
         'def1': 2, 'def2': 4, 'def3': 6, 'def4': 8, 'def5': 10,
         'time5': 1, 'time10': 2, 'time20': 3, 'time30': 4, 'time40': 5
     };
 
-    let puntosASumar = 0;
+    let puntosBase = 0;
     const contenido = message.content.toLowerCase();
 
     for (const key in puntosKeywords) {
         if (contenido.includes(key)) {
-            puntosASumar = puntosKeywords[key];
+            puntosBase = puntosKeywords[key];
             break; 
         }
     }
 
     const usuariosMencionados = message.mentions.users;
 
-    if (usuariosMencionados.size > 0 && puntosASumar > 0) {
-        try {
-            for (const [id, usuario] of usuariosMencionados) {
-                // Buscar al usuario o crearlo si no existe en la DB
-                const [puntosRegistro] = await Puntos.findOrCreate({
-                    where: { userId: usuario.id },
-                    defaults: { defensa: 0 }
-                });
+    if (usuariosMencionados.size > 0 && puntosBase > 0) {
+        // IDs de los usuarios para guardarlos en los botones
+        const idsString = Array.from(usuariosMencionados.keys()).join(',');
 
-                // Incrementar puntos en la base de datos
-                await puntosRegistro.increment('defensa', { by: puntosASumar });
-            }
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`aprobar_${puntosBase}_${idsString}`)
+                    .setLabel('Aprobar ✅')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`doble_${puntosBase}_${idsString}`)
+                    .setLabel('Puntos Dobles 🔥')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('rechazar_puntos')
+                    .setLabel('Rechazar ❌')
+                    .setStyle(ButtonStyle.Danger),
+            );
 
-            message.channel.send(`✅ **DB Actualizada:** Se han añadido **${puntosASumar}** puntos a ${usuariosMencionados.size} usuario(s).`);
-        } catch (error) {
-            console.error("Error al guardar en SQLite:", error);
-            message.reply("Hubo un error al guardar los puntos en la base de datos.");
-        }
+        await message.reply({
+            content: `📢 **Solicitud de Puntos:**\nValor base: **${puntosBase} pts**\nUsuarios: ${usuariosMencionados.map(u => `<@${u.id}>`).join(', ')}\n*Esperando validación de un Comandante...*`,
+            components: [row]
+        });
     }
 });
 
-// --- EVENTO 2: Slash Commands ---
+// --- EVENTO 2: Manejo de Interacciones (Slash Commands + Botones) ---
 client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-    try {
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(error);
-        await interaction.reply({ content: "Hubo un error al ejecutar este comando!", ephemeral: true });
+    // LÓGICA DE BOTONES (Aprobar/Rechazar/Dobles)
+    if (interaction.isButton()) {
+        const nombreRolAdmin = "comandantes"; 
+        if (!interaction.member.roles.cache.some(role => role.name === nombreRolAdmin)) {
+            return interaction.reply({ content: "❌ Solo los **Comandantes** pueden validar puntos.", ephemeral: true });
+        }
+
+        const [accion, puntosStr, idsStr] = interaction.customId.split('_');
+        
+        if (accion === 'rechazar') {
+            return interaction.update({ content: '❌ **Solicitud rechazada.** Los puntos no han sido sumados.', components: [] });
+        }
+
+        const ids = idsStr.split(',');
+        let puntosAFinal = parseInt(puntosStr);
+        let mensajeExito = `✅ **Puntos aprobados.**`;
+
+        if (accion === 'doble') {
+            puntosAFinal = puntosAFinal * 2;
+            mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
+        }
+
+        try {
+            for (const userId of ids) {
+                const [puntosRegistro] = await Puntos.findOrCreate({
+                    where: { userId: userId },
+                    defaults: { defensa: 0 }
+                });
+                await puntosRegistro.increment('defensa', { by: puntosAFinal });
+            }
+
+            await interaction.update({
+                content: `${mensajeExito}\nSe sumaron **${puntosAFinal} pts** a: ${ids.map(id => `<@${id}>`).join(', ')}\n*Validado por: ${interaction.user.username}*`,
+                components: []
+            });
+        } catch (error) {
+            console.error(error);
+            interaction.reply({ content: "Hubo un error al actualizar la DB.", ephemeral: true });
+        }
+    }
+
+    // LÓGICA DE SLASH COMMANDS
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({ content: "Hubo un error al ejecutar este comando!", ephemeral: true });
+        }
     }
 });
 
