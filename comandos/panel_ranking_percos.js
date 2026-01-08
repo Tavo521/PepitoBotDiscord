@@ -25,7 +25,7 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865F2)
-                .setTitle('🏆 Tabla de Líderes de Actividad')
+                .setTitle('🏆 Tabla de franja de percos')
                 .setDescription(`¡Un total de **${listaUsuarios.length}** miembros registrados!`)
                 .setThumbnail('attachment://Club_asesinos.png'); // Usa el logo de tu gremio
 
