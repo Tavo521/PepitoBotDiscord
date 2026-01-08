@@ -434,3 +434,4 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+database.sqlite
