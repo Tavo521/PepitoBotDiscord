@@ -29,11 +29,11 @@ module.exports = {
                 .setDescription(`¡Un total de **${listaUsuarios.length}** miembros registrados!`)
                 .setThumbnail('attachment://Club_asesinos.png'); // Usa el logo de tu gremio
 
-                //Franjas de tier de PVP 
+            // 3. Definición de Franjas
             const franjas = [
-                { nombre: '◆ PvP T3 Percos (Zonas 1 a 200 🐴 80+ pts) ◆', min: 80 },
-                { nombre: '◆ PvP T2 Percos (Zonas 1 a 160 🐴 40+ pts) ◆', min: 40 },
-                { nombre: '◆ PvP T1 Perco (Zona 1 a 120 🐴 0+ pts) ◆', min: 0 }
+                { nombre: 'PvP T1 Perco (Zona 1 a 120 🐴)', min: 0, cant: '1 Perco' },
+                { nombre: 'PvP T2 Percos (Zonas 1 a 160 🐴)', min: 40, cant: '3 Percos' },
+                { nombre: 'PvP T3 Percos (Zonas 1 a 200 🐴)', min: 80, cant: '8 Percos' }
             ];
 
             franjas.forEach(franja => {
