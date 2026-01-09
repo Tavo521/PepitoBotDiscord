@@ -36,10 +36,10 @@ module.exports = {
                 },
                 { 
                     name: '🐴 Niveles de Percos', 
-                    value: '• **T1 (1 Perco):** 0-39 pts\n' +
-                           '• **T2 (3 Percos):** 40-79 pts\n' +
-                           '• **T3 (5 Percos):** 80-99 pts\n' +
-                           '• **T4 (7 Percos):** 100+ pts'
+                    value: '• **T1 (1 Perco - Zona 1 a 100 🐴): ** 0-39 pts\n' +
+                           '• **T2 (3 Percos - Zona 1 a 160 🐴):** 40-79 pts\n' +
+                           '• **T3 (5 Percos - Zona 1 a 180 🐴):** 80-99 pts\n' +
+                           '• **T4 (7 Percos - Zona 1 a 200 🐴):** 100+ pts'
                 }
             )
             .setFooter({ text: 'Sistema de Gestión - Club Asesinos', iconURL: 'attachment://Club_asesinos.png' })
