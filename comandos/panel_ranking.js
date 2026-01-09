@@ -3,7 +3,7 @@ const path = require('path');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('ranking')
+        .setName('panel_ranking')
         .setDescription('Muestra el Top 10 de miembros más activos.'),
     async execute(interaction) {
         // Importamos el modelo Puntos desde pepito.js
