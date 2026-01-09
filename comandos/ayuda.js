@@ -19,7 +19,7 @@ module.exports = {
                 { 
                     name: '📥 Cómo sumar puntos', 
                     value: 'Sube tu captura en <#evidencias> mencionando a los participantes y usando una **palabra clave**:\n' +
-                           '• `atkperco` (5 pts) | `atkprisma` (2 pts) | `ava` (5 pts)\n' +
+                           '• `atkperco` (5 pts) **Los ataques de percos contaran cuando sea OKUMO o NOCTALYS** | `atkprisma` (2 pts) | `ava` (5 pts)\n' +
                            '• `def1` a `def5` (2-10 pts) | `time5` a `time40` (1-5 pts)'
                 },
                 { 
