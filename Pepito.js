@@ -13,25 +13,32 @@ const client = new Client({
     ],
 });
 
-// --- CONFIGURACIÓN DE BASE DE DATOS ---
-const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    logging: false,
-    storage: 'database.sqlite',
-    dialectModule: require('sqlite3'),
-});
+// --- CONFIGURACIÓN DE BASE DE DATOS (MySQL - Vexy Host) ---
+const sequelize = new Sequelize(
+    process.env.DB_NAME,      // Nombre de la base de datos
+    process.env.DB_USER,      // Usuario
+    process.env.DB_PASSWORD,  // Contraseña
+    {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT || 3306,
+        dialect: 'mysql',
+        logging: false,
+        // MySQL es mucho más estable para múltiples conexiones
+    }
+);
 
 const Puntos = sequelize.define('Puntos', {
     userId: { type: DataTypes.STRING, primaryKey: true },
     defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
-// Función para iniciar DB con protección contra corrupción
-async function initDB() {
-    await Puntos.sync();
-    await sequelize.query('PRAGMA journal_mode=WAL;');
-}
-initDB();
+// Sincronizar con MySQL
+sequelize.authenticate()
+    .then(() => {
+        console.log('✅ Conexión a MySQL en Vexy Host establecida.');
+        return Puntos.sync();
+    })
+    .catch(err => console.error('❌ Error conectando a MySQL:', err));
 
 // --- CARGA DE COMANDOS ---
 client.commands = new Collection();
@@ -72,8 +79,6 @@ client.on("messageCreate", async (message) => {
     const usuariosMencionados = message.mentions.users;
 
     if (usuariosMencionados.size > 0 && puntosBase > 0) {
-        // SOLUCIÓN AL ERROR: Ya no guardamos las IDs en el CustomID
-        // Solo guardamos la acción y el valor de puntos (ej: aprobar_5)
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -106,7 +111,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return interaction.reply({ content: "❌ Solo los **Comandantes** pueden validar puntos.", ephemeral: true });
         }
 
-        // Extraer acción y puntos del ID corto
         const partes = interaction.customId.split('_');
         const accion = partes[0];
         const puntosStr = partes[1];
@@ -115,13 +119,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return interaction.update({ content: '❌ **Solicitud rechazada.** Los puntos no han sido sumados.', components: [] });
         }
 
-        // LEER IDs DESDE EL MENSAJE ORIGINAL (Solución al error de longitud)
-        // Buscamos las menciones en el mensaje que el bot respondió originalmente
+        // Recuperar usuarios desde el mensaje referenciado
         const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
         const usuariosParaSumar = mensajeOriginal.mentions.users;
 
         if (usuariosParaSumar.size === 0) {
-            return interaction.reply({ content: "Error: No se encontraron usuarios mencionados en el mensaje original.", ephemeral: true });
+            return interaction.reply({ content: "Error: No se encontraron usuarios mencionados.", ephemeral: true });
         }
 
         let puntosFinales = parseInt(puntosStr);
@@ -148,7 +151,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } catch (error) {
             console.error(error);
             if (!interaction.replied) {
-                interaction.reply({ content: "Hubo un error al actualizar la DB.", ephemeral: true });
+                interaction.reply({ content: "Hubo un error al actualizar la base de datos.", ephemeral: true });
             }
         }
     }
@@ -165,7 +168,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// --- EVENTO 3: Prefijo antiguo ! ---
+// --- EVENTO 3: Prefijo ! ---
 client.on("messageCreate", (message) => {
     if (!message.content.startsWith("!") || message.author.bot) return;
 
@@ -185,7 +188,6 @@ client.on("messageCreate", (message) => {
 
 client.once("ready", () => {
     console.log(`Bot encendido como ${client.user.tag}`);
-    // Opcional: client.user.setUsername('Pepito'); // Solo usar una vez
 });
 
 client.login(process.env.DISCORD_TOKEN);
