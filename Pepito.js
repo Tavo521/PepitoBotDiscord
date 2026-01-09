@@ -169,6 +169,7 @@ client.on("messageCreate", (message) => {
 
 client.once("ready", () => {
     console.log(`Bot encendido como ${client.user.tag}`);
+    client.user.setUsername('Pepito');
 });
 
 client.login(process.env.DISCORD_TOKEN);
