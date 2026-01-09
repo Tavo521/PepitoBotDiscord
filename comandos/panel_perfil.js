@@ -19,9 +19,10 @@ module.exports = {
 
             // 3. Definición de Franjas (Actualizadas)
             const franjas = [
-                { nombre: 'PvP T1 Perco (Zona 1 a 120 🐴)', min: 0, cant: '1 Perco' },
+                { nombre: 'PvP T1 Perco (Zona 1 a 100 🐴)', min: 0, cant: '1 Perco' },
                 { nombre: 'PvP T2 Percos (Zonas 1 a 160 🐴)', min: 40, cant: '3 Percos' },
-                { nombre: 'PvP T3 Percos (Zonas 1 a 200 🐴)', min: 80, cant: '8 Percos' }
+                { nombre: 'PvP T3 Percos (Zonas 1 a 180 🐴)', min: 80, cant: '5 Percos' },
+                { nombre: 'PvP T4 Percos (Zonas 1 a 200 🐴)', min: 100, cant: '7 Percos' }
             ];
 
             // 4. Lógica para determinar Rango Actual y Próximo Objetivo
