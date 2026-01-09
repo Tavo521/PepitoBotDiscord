@@ -46,7 +46,7 @@ for (const file of commandFiles) {
 // --- EVENTO 1: Solicitud de Puntos con Botones ---
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
-    if (message.channel.name.toLowerCase() !== "evidencias") return;
+    if (message.channel.name.toLowerCase() !== "⚔️-evidencias") return;
 
     const puntosKeywords = {
         'atkperco': 5, 'atkprisma': 2, 'ava': 5,
