@@ -6,6 +6,7 @@ module.exports = {
         .setName('panel_perfil')
         .setDescription('Consulta tu participación personal y rango PvP.'),
     async execute(interaction) {
+        // CORRECCIÓN: Importación en minúscula para evitar errores en hosting Linux
         const { Puntos } = require('../Pepito.js');
 
         try {
@@ -17,7 +18,12 @@ module.exports = {
             const todosLosUsuarios = await Puntos.findAll({ order: [['defensa', 'DESC']] });
             const posicion = todosLosUsuarios.findIndex(u => u.userId === interaction.user.id) + 1;
 
-            // 3. Definición de Franjas (Actualizadas)
+            // 3. Forzar obtención del nombre actualizado (Fetch)
+            // Esto evita que salga "Miembro" si el bot acaba de reiniciar
+            const miembro = await interaction.guild.members.fetch(interaction.user.id);
+            const nombreAMostrar = miembro.displayName;
+
+            // 4. Definición de Franjas (4 Niveles)
             const franjas = [
                 { nombre: 'PvP T1 Perco (Zona 1 a 100 🐴)', min: 0, cant: '1 Perco' },
                 { nombre: 'PvP T2 Percos (Zonas 1 a 160 🐴)', min: 40, cant: '3 Percos' },
@@ -25,7 +31,7 @@ module.exports = {
                 { nombre: 'PvP T4 Percos (Zonas 1 a 200 🐴)', min: 100, cant: '7 Percos' }
             ];
 
-            // 4. Lógica para determinar Rango Actual y Próximo Objetivo
+            // 5. Lógica para determinar Rango Actual y Próximo Objetivo
             let rangoActual = franjas[0];
             let proximoRango = null;
 
@@ -36,13 +42,13 @@ module.exports = {
                 }
             }
 
-            // 5. Preparar el Embed
+            // 6. Preparar el Embed
             const imagePath = path.join(__dirname, '..', 'imagenes', 'Club_asesinos.png');
             const file = new AttachmentBuilder(imagePath);
 
             const embed = new EmbedBuilder()
                 .setColor(0x00AE86) // Color turquesa
-                .setTitle(`👤 Perfil de Participación: ${interaction.member.displayName}`)
+                .setTitle(`👤 Perfil de Participación: ${nombreAMostrar}`)
                 .setThumbnail('attachment://Club_asesinos.png')
                 .addFields(
                     { name: '⭐ Puntos Totales', value: `**${puntosActuales}** pts`, inline: true },
@@ -62,12 +68,13 @@ module.exports = {
                 embed.addFields({ name: '🔥 Estatus', value: '¡Has alcanzado el rango máximo de participación!' });
             }
 
-            embed.setFooter({ text: 'Consulta tus puntos en cualquier momento con /perfil' });
+            embed.setFooter({ text: 'Consulta tus puntos con /panel_perfil' })
+                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed], files: [file] });
 
         } catch (error) {
-            console.error('Error en /perfil:', error);
+            console.error('Error en /panel_perfil:', error);
             await interaction.reply({ content: 'Hubo un error al consultar tu perfil.', ephemeral: true });
         }
     },
