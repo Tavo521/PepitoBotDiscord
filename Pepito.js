@@ -26,7 +26,12 @@ const Puntos = sequelize.define('Puntos', {
     defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
-Puntos.sync();
+// Función para iniciar DB con protección contra corrupción
+async function initDB() {
+    await Puntos.sync();
+    await sequelize.query('PRAGMA journal_mode=WAL;');
+}
+initDB();
 
 // --- CARGA DE COMANDOS ---
 client.commands = new Collection();
@@ -67,17 +72,16 @@ client.on("messageCreate", async (message) => {
     const usuariosMencionados = message.mentions.users;
 
     if (usuariosMencionados.size > 0 && puntosBase > 0) {
-        // IDs de los usuarios para guardarlos en los botones
-        const idsString = Array.from(usuariosMencionados.keys()).join(',');
-
+        // SOLUCIÓN AL ERROR: Ya no guardamos las IDs en el CustomID
+        // Solo guardamos la acción y el valor de puntos (ej: aprobar_5)
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`aprobar_${puntosBase}_${idsString}`)
+                    .setCustomId(`aprobar_${puntosBase}`)
                     .setLabel('Aprobar ✅')
                     .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
-                    .setCustomId(`doble_${puntosBase}_${idsString}`)
+                    .setCustomId(`doble_${puntosBase}`)
                     .setLabel('Puntos Dobles 🔥')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
@@ -95,48 +99,60 @@ client.on("messageCreate", async (message) => {
 
 // --- EVENTO 2: Manejo de Interacciones (Slash Commands + Botones) ---
 client.on(Events.InteractionCreate, async (interaction) => {
-    // LÓGICA DE BOTONES (Aprobar/Rechazar/Dobles)
+    
     if (interaction.isButton()) {
         const nombreRolAdmin = "comandantes"; 
-        if (!interaction.member.roles.cache.some(role => role.name === nombreRolAdmin)) {
+        if (!interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin)) {
             return interaction.reply({ content: "❌ Solo los **Comandantes** pueden validar puntos.", ephemeral: true });
         }
 
-        const [accion, puntosStr, idsStr] = interaction.customId.split('_');
-        
+        // Extraer acción y puntos del ID corto
+        const partes = interaction.customId.split('_');
+        const accion = partes[0];
+        const puntosStr = partes[1];
+
         if (accion === 'rechazar') {
             return interaction.update({ content: '❌ **Solicitud rechazada.** Los puntos no han sido sumados.', components: [] });
         }
 
-        const ids = idsStr.split(',');
-        let puntosAFinal = parseInt(puntosStr);
+        // LEER IDs DESDE EL MENSAJE ORIGINAL (Solución al error de longitud)
+        // Buscamos las menciones en el mensaje que el bot respondió originalmente
+        const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+        const usuariosParaSumar = mensajeOriginal.mentions.users;
+
+        if (usuariosParaSumar.size === 0) {
+            return interaction.reply({ content: "Error: No se encontraron usuarios mencionados en el mensaje original.", ephemeral: true });
+        }
+
+        let puntosFinales = parseInt(puntosStr);
         let mensajeExito = `✅ **Puntos aprobados.**`;
 
         if (accion === 'doble') {
-            puntosAFinal = puntosAFinal * 2;
+            puntosFinales = puntosFinales * 2;
             mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
         }
 
         try {
-            for (const userId of ids) {
+            for (const [userId, user] of usuariosParaSumar) {
                 const [puntosRegistro] = await Puntos.findOrCreate({
                     where: { userId: userId },
                     defaults: { defensa: 0 }
                 });
-                await puntosRegistro.increment('defensa', { by: puntosAFinal });
+                await puntosRegistro.increment('defensa', { by: puntosFinales });
             }
 
             await interaction.update({
-                content: `${mensajeExito}\nSe sumaron **${puntosAFinal} pts** a: ${ids.map(id => `<@${id}>`).join(', ')}\n*Validado por: ${interaction.user.username}*`,
+                content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Validado por: ${interaction.user.username}*`,
                 components: []
             });
         } catch (error) {
             console.error(error);
-            interaction.reply({ content: "Hubo un error al actualizar la DB.", ephemeral: true });
+            if (!interaction.replied) {
+                interaction.reply({ content: "Hubo un error al actualizar la DB.", ephemeral: true });
+            }
         }
     }
 
-    // LÓGICA DE SLASH COMMANDS
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
@@ -169,7 +185,7 @@ client.on("messageCreate", (message) => {
 
 client.once("ready", () => {
     console.log(`Bot encendido como ${client.user.tag}`);
-    client.user.setUsername('Pepito');
+    // Opcional: client.user.setUsername('Pepito'); // Solo usar una vez
 });
 
 client.login(process.env.DISCORD_TOKEN);
