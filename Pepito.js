@@ -152,8 +152,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         try {
             await command.execute(interaction);
         } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: "Error al ejecutar comando", ephemeral: true });
+            console.error("Error ejecutando comando: ",error);
+            if (interaction.deferred){
+                await interaction.followUp({ content: 'Hubo un error interno.', ephemeral: true });
+            }
+            
         }
     }
 });

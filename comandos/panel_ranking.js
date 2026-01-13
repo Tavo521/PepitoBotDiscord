@@ -5,16 +5,24 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('panel_ranking')
         .setDescription('Establece el mensaje de ranking fijo en este canal.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // Solo admins
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     async execute(interaction) {
+        // 1. PRIMERO: Avisamos a Discord que tardaremos (esto evita el error 10062)
+        await interaction.deferReply({ ephemeral: true });
+
         const { Puntos } = require('../Pepito.js');
 
         try {
-            // 1. Obtener TODOS los puntajes (sin límite)
+            // 2. Obtener los puntajes
             const listaCompleta = await Puntos.findAll({
                 order: [['defensa', 'DESC']],
             });
 
+            if (listaCompleta.length === 0) {
+                return interaction.editReply('Aún no hay puntos registrados en el ranking.');
+            }
+
+            // 3. Obtener nombres de forma asíncrona
             const listaPromesas = listaCompleta.map(async (u, index) => {
                 let nombre = "Desconocido";
                 try {
@@ -24,13 +32,14 @@ module.exports = {
                     nombre = `Ex-miembro (${u.userId})`;
                 }
                 
-                let medalla = (index < 3) ? ["🥇 ", "🥈 ", "🥉 "][index] : `${index + 1}. `;
+                let medalla = (index === 0) ? "🥇 " : (index === 1) ? "🥈 " : (index === 2) ? "🥉 " : `${index + 1}. `;
                 return `${medalla}**${nombre}** — ${u.defensa} pts`;
             });
 
             const listaFinal = await Promise.all(listaPromesas);
-            const rankingTexto = listaFinal.join('\n') || "Aún no hay puntos.";
+            const rankingTexto = listaFinal.join('\n');
 
+            // 4. Preparar imagen y embed
             const imagePath = path.join(__dirname, '..', 'imagenes', 'Club_asesinos.png');
             const file = new AttachmentBuilder(imagePath);
 
@@ -42,18 +51,20 @@ module.exports = {
                 .setFooter({ text: 'Sistema de actualización automática activado' })
                 .setTimestamp();
 
-            // Enviamos el mensaje al canal
-            const mensajeEnviado = await interaction.channel.send({ embeds: [embed], files: [file] });
+            // 5. Enviar el mensaje fijo al canal
+            const mensajeEnviado = await interaction.channel.send({ 
+                embeds: [embed], 
+                files: [file] 
+            });
 
-            // Respondemos al comando indicando la ID
-            await interaction.reply({ 
-                content: `✅ Ranking enviado. \n**IMPORTANTE:** Copia esta ID de mensaje: \`${mensajeEnviado.id}\` y pégala en tu archivo Pepito.js`, 
-                ephemeral: true 
+            // 6. Confirmar al usuario usando editReply
+            await interaction.editReply({ 
+                content: `✅ Ranking establecido con éxito.\n**ID del Mensaje:** \`${mensajeEnviado.id}\`\n**ID del Canal:** \`${interaction.channelId}\`\n\nCopia estos IDs en tu archivo Pepito.js para que la actualización automática funcione.`
             });
 
         } catch (error) {
             console.error('Error en ranking:', error);
-            await interaction.reply({ content: 'Hubo un error al generar el ranking.', ephemeral: true });
+            await interaction.editReply({ content: 'Hubo un error al generar el ranking.' });
         }
     },
 };
