@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, Collection, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const { Sequelize, DataTypes } = require('sequelize');
@@ -13,17 +13,16 @@ const client = new Client({
     ],
 });
 
-// --- CONFIGURACIÓN DE BASE DE DATOS (MySQL - Vexy Host) ---
+// --- CONFIGURACIÓN DE BASE DE DATOS (MySQL) ---
 const sequelize = new Sequelize(
-    process.env.DB_NAME,      // Nombre de la base de datos
-    process.env.DB_USER,      // Usuario
-    process.env.DB_PASSWORD,  // Contraseña
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
     {
         host: process.env.DB_HOST,
         port: process.env.DB_PORT || 3306,
         dialect: 'mysql',
         logging: false,
-        // MySQL es mucho más estable para múltiples conexiones
     }
 );
 
@@ -32,10 +31,9 @@ const Puntos = sequelize.define('Puntos', {
     defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
-// Sincronizar con MySQL
 sequelize.authenticate()
     .then(() => {
-        console.log('✅ Conexión a MySQL en Vexy Host establecida.');
+        console.log('✅ Conexión a MySQL establecida.');
         return Puntos.sync();
     })
     .catch(err => console.error('❌ Error conectando a MySQL:', err));
@@ -55,7 +53,7 @@ for (const file of commandFiles) {
     }
 }
 
-// --- EVENTO 1: Solicitud de Puntos con Botones ---
+// --- EVENTO 1: Solicitud de Puntos ---
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (message.channel.name.toLowerCase() !== "⚔️-evidencias") return;
@@ -81,18 +79,9 @@ client.on("messageCreate", async (message) => {
     if (usuariosMencionados.size > 0 && puntosBase > 0) {
         const row = new ActionRowBuilder()
             .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`aprobar_${puntosBase}`)
-                    .setLabel('Aprobar ✅')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId(`doble_${puntosBase}`)
-                    .setLabel('Puntos Dobles 🔥')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('rechazar_puntos')
-                    .setLabel('Rechazar ❌')
-                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId(`aprobar_${puntosBase}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`doble_${puntosBase}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
             );
 
         await message.reply({
@@ -102,7 +91,7 @@ client.on("messageCreate", async (message) => {
     }
 });
 
-// --- EVENTO 2: Manejo de Interacciones (Slash Commands + Botones) ---
+// --- EVENTO 2: Manejo de Interacciones (AQUÍ ESTÁ EL CAMBIO) ---
 client.on(Events.InteractionCreate, async (interaction) => {
     
     if (interaction.isButton()) {
@@ -116,26 +105,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const puntosStr = partes[1];
 
         if (accion === 'rechazar') {
-            return interaction.update({ content: '❌ **Solicitud rechazada.** Los puntos no han sido sumados.', components: [] });
+            return interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
         }
 
-        // Recuperar usuarios desde el mensaje referenciado
         const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
         const usuariosParaSumar = mensajeOriginal.mentions.users;
 
-        if (usuariosParaSumar.size === 0) {
-            return interaction.reply({ content: "Error: No se encontraron usuarios mencionados.", ephemeral: true });
-        }
+        if (usuariosParaSumar.size === 0) return interaction.reply({ content: "Error: No hay usuarios.", ephemeral: true });
 
         let puntosFinales = parseInt(puntosStr);
         let mensajeExito = `✅ **Puntos aprobados.**`;
 
         if (accion === 'doble') {
-            puntosFinales = puntosFinales * 2;
+            puntosFinales *= 2;
             mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
         }
 
         try {
+            // Guardamos en la Base de Datos
             for (const [userId, user] of usuariosParaSumar) {
                 const [puntosRegistro] = await Puntos.findOrCreate({
                     where: { userId: userId },
@@ -144,15 +131,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await puntosRegistro.increment('defensa', { by: puntosFinales });
             }
 
+            // Actualizamos el mensaje de la solicitud
             await interaction.update({
                 content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Validado por: ${interaction.user.username}*`,
                 components: []
             });
+
+            // --- ESTA ES LA LÍNEA QUE FALTABA ---
+            // Llama a la función para que el ranking fijo se actualice solo
+            await actualizarRankingFijo(interaction.guild); 
+
         } catch (error) {
             console.error(error);
-            if (!interaction.replied) {
-                interaction.reply({ content: "Hubo un error al actualizar la base de datos.", ephemeral: true });
-            }
         }
     }
 
@@ -163,28 +153,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await command.execute(interaction);
         } catch (error) {
             console.error(error);
-            await interaction.reply({ content: "Hubo un error al ejecutar este comando!", ephemeral: true });
+            await interaction.reply({ content: "Error al ejecutar comando", ephemeral: true });
         }
     }
 });
 
-// --- EVENTO 3: Prefijo ! ---
-client.on("messageCreate", (message) => {
-    if (!message.content.startsWith("!") || message.author.bot) return;
-
-    const args = message.content.slice(1).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
-    const command = client.commands.get(commandName);
-
-    if (!command || command.data) return; 
+// --- FUNCIÓN PARA ACTUALIZAR EL RANKING AUTOMÁTICO ---
+async function actualizarRankingFijo(guild) {
+    const CANAL_ID = '1460747954762678313'; 
+    const MENSAJE_ID = '1460748073855619289'; 
 
     try {
-        command.execute(message, args);
+        const canal = await guild.channels.fetch(CANAL_ID);
+        const mensaje = await canal.messages.fetch(MENSAJE_ID);
+
+        const listaCompleta = await Puntos.findAll({
+            order: [['defensa', 'DESC']],
+        });
+
+        const listaPromesas = listaCompleta.map(async (u, index) => {
+            let nombre = "Desconocido";
+            try {
+                const miembro = await guild.members.fetch(u.userId);
+                nombre = miembro.displayName;
+            } catch {
+                nombre = `Ex-miembro (${u.userId})`;
+            }
+            
+            let medalla = (index === 0) ? "🥇 " : (index === 1) ? "🥈 " : (index === 2) ? "🥉 " : `${index + 1}. `;
+            return `${medalla}**${nombre}** — ${u.defensa} pts`;
+        });
+
+        const listaFinal = await Promise.all(listaPromesas);
+        const rankingTexto = listaFinal.join('\n') || "No hay puntos aún.";
+
+        const embed = new EmbedBuilder()
+            .setColor(0xf1c40f)
+            .setTitle('🏆 Ranking General - Gremio Club Asesinos')
+            .setDescription(rankingTexto)
+            .setFooter({ text: 'Se actualiza automáticamente al aprobar puntos' })
+            .setTimestamp();
+
+        await mensaje.edit({ embeds: [embed] });
+        console.log("🔄 Ranking actualizado automáticamente.");
     } catch (error) {
-        console.error(error);
-        message.reply("Hubo un error al ejecutar ese comando!");
+        console.error('Error actualizando ranking fijo:', error);
     }
-});
+}
 
 client.once("ready", () => {
     console.log(`Bot encendido como ${client.user.tag}`);
