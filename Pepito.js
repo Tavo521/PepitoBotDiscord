@@ -164,7 +164,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // --- FUNCIÓN PARA ACTUALIZAR EL RANKING AUTOMÁTICO ---
 async function actualizarRankingFijo(guild) {
     const CANAL_ID = '1460747954762678313'; 
-    const MENSAJE_ID = '1460748073855619289'; 
+    const MENSAJE_ID = '1460754054018760848'; 
 
     try {
         const canal = await guild.channels.fetch(CANAL_ID);

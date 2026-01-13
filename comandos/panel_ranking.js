@@ -57,11 +57,6 @@ module.exports = {
                 files: [file] 
             });
 
-            // 6. Confirmar al usuario usando editReply
-            await interaction.editReply({ 
-                content: `✅ Ranking establecido con éxito.\n**ID del Mensaje:** \`${mensajeEnviado.id}\`\n**ID del Canal:** \`${interaction.channelId}\`\n\nCopia estos IDs en tu archivo Pepito.js para que la actualización automática funcione.`
-            });
-
         } catch (error) {
             console.error('Error en ranking:', error);
             await interaction.editReply({ content: 'Hubo un error al generar el ranking.' });
