@@ -13,7 +13,7 @@ const client = new Client({
     ],
 });
 
-// --- CONFIGURACIÓN DE BASE DE DATOS (MySQL) ---
+// --- CONFIGURACIÓN DE BASE DE DATOS ---
 const sequelize = new Sequelize(
     process.env.DB_NAME,
     process.env.DB_USER,
@@ -91,7 +91,7 @@ client.on("messageCreate", async (message) => {
     }
 });
 
-// --- EVENTO 2: Manejo de Interacciones (AQUÍ ESTÁ EL CAMBIO) ---
+// --- EVENTO 2: Manejo de Interacciones ---
 client.on(Events.InteractionCreate, async (interaction) => {
     
     if (interaction.isButton()) {
@@ -102,18 +102,56 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const partes = interaction.customId.split('_');
         const accion = partes[0];
-        const puntosStr = partes[1];
+        const valorPuntos = partes[1]; // Representa puntos finales o base según la acción
 
+        // --- LÓGICA PARA REVERTIR/EDITAR PUNTOS ---
+        if (accion === 'editar') {
+            const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+            const usuariosParaRestar = mensajeOriginal.mentions.users;
+            const puntosARestar = parseInt(valorPuntos);
+            const puntosBaseOriginales = partes[2]; // Recuperamos el valor base para restaurar botones
+
+            try {
+                for (const [userId, user] of usuariosParaRestar) {
+                    const registro = await Puntos.findByPk(userId);
+                    if (registro) {
+                        await registro.decrement('defensa', { by: puntosARestar });
+                    }
+                }
+
+                // Restaurar botones originales
+                const rowRestaurada = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
+                        new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
+                    );
+
+                await interaction.update({
+                    content: `🔄 **Puntos revertidos (-${puntosARestar} pts).** Esperando nueva validación...\nUsuarios: ${usuariosParaRestar.map(u => `<@${u.id}>`).join(', ')}`,
+                    components: [rowRestaurada]
+                });
+
+                await actualizarRankingFijo(interaction.guild);
+                return;
+            } catch (error) {
+                console.error("Error al editar:", error);
+                return interaction.reply({ content: "Hubo un error al intentar revertir los puntos.", ephemeral: true });
+            }
+        }
+
+        // --- LÓGICA PARA RECHAZAR ---
         if (accion === 'rechazar') {
             return interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
         }
 
+        // --- LÓGICA PARA APROBAR / DOBLE ---
         const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
         const usuariosParaSumar = mensajeOriginal.mentions.users;
 
         if (usuariosParaSumar.size === 0) return interaction.reply({ content: "Error: No hay usuarios.", ephemeral: true });
 
-        let puntosFinales = parseInt(puntosStr);
+        let puntosFinales = parseInt(valorPuntos);
         let mensajeExito = `✅ **Puntos aprobados.**`;
 
         if (accion === 'doble') {
@@ -122,7 +160,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         try {
-            // Guardamos en la Base de Datos
             for (const [userId, user] of usuariosParaSumar) {
                 const [puntosRegistro] = await Puntos.findOrCreate({
                     where: { userId: userId },
@@ -131,14 +168,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await puntosRegistro.increment('defensa', { by: puntosFinales });
             }
 
-            // Actualizamos el mensaje de la solicitud
+            // Creamos el botón de Editar/Corregir
+            // Guardamos: editar_PUNTOSFINALEs_PUNTOSBASE (para poder restaurar los botones luego)
+            const rowEditar = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`editar_${puntosFinales}_${valorPuntos}`)
+                        .setLabel('Corregir / Editar ✏️')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
             await interaction.update({
                 content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Validado por: ${interaction.user.username}*`,
-                components: []
+                components: [rowEditar]
             });
 
-            // --- ESTA ES LA LÍNEA QUE FALTABA ---
-            // Llama a la función para que el ranking fijo se actualice solo
             await actualizarRankingFijo(interaction.guild); 
 
         } catch (error) {
@@ -156,15 +200,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
             if (interaction.deferred){
                 await interaction.followUp({ content: 'Hubo un error interno.', ephemeral: true });
             }
-            
         }
     }
 });
 
 // --- FUNCIÓN PARA ACTUALIZAR EL RANKING AUTOMÁTICO ---
 async function actualizarRankingFijo(guild) {
-    const CANAL_ID = '1460747954762678313'; 
-    const MENSAJE_ID = '1460754054018760848'; 
+    const CANAL_ID = process.env.RANKING_CHANNEL_ID; 
+    const MENSAJE_ID = process.env.RANKING_MESSAGE_ID;
+
+    if (!CANAL_ID || !MENSAJE_ID) return;
 
     try {
         const canal = await guild.channels.fetch(CANAL_ID);
