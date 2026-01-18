@@ -21,11 +21,10 @@ module.exports = {
                 return message.reply('No hay datos registrados en la base de datos.');
             }
 
-            // 3. Definición de las 4 franjas
+            // 3. Definición de las 3 franjas
             const franjas = [
-                { nombre: 'T4 (7 Percos)', min: 100 },
-                { nombre: 'T3 (5 Percos)', min: 80 },
-                { nombre: 'T2 (3 Percos)', min: 40 },
+                { nombre: 'T3 (6 Percos)', min: 160 },
+                { nombre: 'T2 (2 Percos)', min: 80 },
                 { nombre: 'T1 (1 Perco) ', min: 0 }
             ];
 

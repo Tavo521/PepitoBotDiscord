@@ -31,15 +31,14 @@ module.exports = {
                     value: 'Usa **/perfil** para ver tus puntos, tu rango actual y cuánto te falta para el siguiente nivel.'
                 },
                 { 
-                    name: '🏆 Ver el Top 10', 
-                    value: 'Usa **/ranking** para ver quiénes son los líderes de actividad del gremio.'
+                    name: '🏆 Ver el Ranking', 
+                    value: 'Puedes ver el ranking de la alianza en el canal 🏆-ranking. se actualiza de manera automatica cada vez.'
                 },
                 { 
                     name: '🐴 Niveles de Percos', 
-                    value: '• **T1 (1 Perco - Zona 1 a 100 🐴): ** 0-39 pts\n' +
-                           '• **T2 (3 Percos - Zona 1 a 160 🐴):** 40-79 pts\n' +
-                           '• **T3 (5 Percos - Zona 1 a 180 🐴):** 80-99 pts\n' +
-                           '• **T4 (7 Percos - Zona 1 a 200 🐴):** 100+ pts'
+                    value: '• **T1 (1 Perco - Zona 1 a 120 🐴): ** 0-80 pts\n' +
+                           '• **T2 (2 Percos - Zona 1 a 160 🐴):** 40-79 pts\n' +
+                           '• **T3 (6 Percos - Zona 1 a 200 🐴):** 160+ pts'
                 }
             )
             .setFooter({ text: 'Sistema de Gestión - Club Asesinos', iconURL: 'attachment://Club_asesinos.png' })
