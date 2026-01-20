@@ -66,6 +66,38 @@ for (const file of commandFiles) {
     }
 }
 
+// --- REGISTRO AUTOMÁTICO DE COMANDOS (Para Hostings como VexyHost) ---
+const { REST, Routes } = require('discord.js');
+
+async function desplegarComandos() {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    const commandsJson = [];
+
+    // Obtenemos el formato JSON de cada comando cargado
+    client.commands.forEach(command => {
+        if (command.data) {
+            commandsJson.push(command.data.toJSON());
+        }
+    });
+
+    try {
+        console.log(`⏳ Iniciando actualización de ${commandsJson.length} comandos de barra...`);
+
+        // Routes.applicationCommands registra los comandos de forma GLOBAL
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commandsJson },
+        );
+
+        console.log('✅ Comandos de barra registrados globalmente con éxito.');
+    } catch (error) {
+        console.error('❌ Error al registrar comandos:', error);
+    }
+}
+
+// Ejecutar el despliegue al iniciar
+desplegarComandos();
+
 // --- EVENTO 1: Solicitud de Puntos ---
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
@@ -171,7 +203,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     components: [rowRestaurada]
                 });
 
-                await actualizarRankingFijo(interaction.guild);
+                await RankingFijo(interaction.guild);
             } catch (error) {
                 console.error("Error al editar:", error);
             }
