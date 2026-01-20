@@ -1,24 +1,56 @@
-const { PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
 
 module.exports = {
-    name: 'limpiar_db',
-    async execute(message, args) {
-        // 1. Verificación de seguridad: Solo administradores
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ No tienes permisos de administrador para usar este comando.');
-        }
+    data: new SlashCommandBuilder()
+        .setName('limpiar_db')
+        .setDescription('Reinicia todos los puntos para una nueva temporada (BORRADO TOTAL).')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-        // 2. Importar el modelo desde pepito.js
-        const { Puntos } = require('../Pepito.js');
+    async execute(interaction) {
+        // Importamos Puntos y la función de actualización desde Pepito.js
+        const { Puntos, actualizarRankingFijo } = require('../Pepito.js');
 
-        try {
-            // Confirmación rápida (opcional: podrías pedir un "si" para confirmar)
-            await Puntos.destroy({ where: {}, truncate: false });
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('confirmar_borrado').setLabel('SÍ, BORRAR TODO').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('cancelar_borrado').setLabel('No, cancelar').setStyle(ButtonStyle.Secondary),
+            );
 
-            message.channel.send('🗑️ **Base de datos limpiada.** Se han reiniciado todos los puntos a 0.');
-        } catch (error) {
-            console.error('Error al limpiar la DB:', error);
-            message.reply('Hubo un error al intentar vaciar la base de datos.');
-        }
+        const response = await interaction.reply({
+            content: '⚠️ **¿ESTÁS SEGURO?**\nEsta acción borrará todos los puntos y reiniciará el Ranking.',
+            components: [row],
+            flags: [MessageFlags.Ephemeral]
+        });
+
+        const collector = response.createMessageComponentCollector({ 
+            componentType: ComponentType.Button, 
+            time: 30000 
+        });
+
+        collector.on('collect', async (i) => {
+            if (i.customId === 'confirmar_borrado') {
+                try {
+                    // 1. Borrar datos de la DB
+                    await Puntos.destroy({ where: {}, truncate: false });
+                    
+                    // 2. ACTUALIZAR EL PANEL DE RANKING
+                    // Pasamos interaction.guild para que la función sepa en qué servidor actuar
+                    await actualizarRankingFijo(interaction.guild);
+
+                    await i.update({ 
+                        content: '✅ **Temporada Reiniciada.** Los puntos y el panel de ranking han sido puestos a 0.', 
+                        components: [] 
+                    });
+
+                    await interaction.channel.send('📢 **¡Nueva Temporada!** El ranking ha sido reiniciado por un Comandante. ¡A darlo todo! ⚔️');
+
+                } catch (error) {
+                    console.error(error);
+                    await i.update({ content: '❌ Error al intentar limpiar la base de datos.', components: [] });
+                }
+            } else {
+                await i.update({ content: '✅ Acción cancelada.', components: [] });
+            }
+        });
     },
 };

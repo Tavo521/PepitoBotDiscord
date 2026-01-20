@@ -1,56 +1,79 @@
-// Necesitas una forma de almacenar el tiempo de espera.
-// Usamos un objeto simple para guardar el timestamp de cada usuario.
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+
+// Mapa para gestionar el tiempo de espera (Cooldown)
 const cooldowns = new Map();
 
 module.exports = {
-    name: 'york',
-    description: 'Golpea al punch con un ataque aleatorio y muestra un mensaje según el daño.',
-    execute(message, args) {
-        // Define el tiempo de espera en milisegundos (1 minuto)
-        const cooldownAmount = 1 * 60 * 1000; // 1 minuto en milisegundos
+    data: new SlashCommandBuilder()
+        .setName('york')
+        .setDescription('Intenta igualar el golpe legendario de York (3000 de daño).'),
 
-        // Obtiene el ID del usuario
-        const userId = message.author.id;
+    async execute(interaction) {
+        const { Puntos, GlobalConfig } = require('../Pepito.js'); // Usamos tu DB
+        const userId = interaction.user.id;
+        const cooldownAmount = 1 * 60 * 1000; // 1 minuto
+        const now = Date.now();
 
-        // Revisa si el usuario está en el mapa de tiempos de espera
+        // --- LÓGICA DE COOLDOWN ---
         if (cooldowns.has(userId)) {
-            // Si el usuario ya usó el comando, calcula cuánto tiempo queda
             const expirationTime = cooldowns.get(userId) + cooldownAmount;
-            const now = Date.now();
-
             if (now < expirationTime) {
-                // Si el tiempo de espera no ha terminado, informa al usuario
-                const timeLeft = (expirationTime - now) / 1000; // Tiempo restante en segundos
-                const minutes = Math.floor(timeLeft / 60);
-                const seconds = Math.floor(timeLeft % 60);
-                
-                return message.reply(`¡Espera! ⏳ Tienes que esperar ${minutes} minutos y ${seconds} segundos antes de volver a usar el comando !york.`);
+                const timeLeft = Math.ceil((expirationTime - now) / 1000);
+                return interaction.reply({ 
+                    content: `⏳ Estás cansado... espera **${timeLeft} segundos** para volver a golpear.`, 
+                    ephemeral: true 
+                });
             }
         }
+        cooldowns.set(userId, now);
 
-        // Si el usuario no está en el mapa o el tiempo de espera ya pasó,
-        // lo agrega o actualiza con el timestamp actual.
-        cooldowns.set(userId, Date.now());
-
-        // Lógica para determinar el mensaje extra según el daño
+        // --- LÓGICA DEL JUEGO ---
         const dano = Math.floor(Math.random() * 3000) + 1;
-        let mensajeRespuesta;
-        
+        let mensajeRespuesta = "";
+        let colorEmbed = 0x3498DB; // Azul por defecto
+
         if (dano === 3000) {
-            mensajeRespuesta = `¡@everyone! ¡¡FELICITACIONES ${message.author}!! Por fin le has hecho 3000 de daño al punch como York 🥳🎉🎊`;
+            mensajeRespuesta = `¡@everyone! 🚨 ¡¡INCREÍBLE!! **${interaction.user.username}** ha alcanzado la perfección. ¡3000 de daño! York está llorando de la emoción 🥳🎉`;
+            colorEmbed = 0xFFD700; // Dorado
         } else if (dano >= 2500) {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Estuviste a punto de pegarle 3000 de daño como York`;
-        } else if (dano >= 2000) {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. ¡Buen golpe! Sigue así para llegar a los 3000. York casi esta orgulloso`;
+            mensajeRespuesta = `¡Ufff! Casi lo logras. Daño: **${dano}**. York te mira con respeto.`;
+            colorEmbed = 0xE67E22; // Naranja
         } else if (dano >= 1500) {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Un golpe decente. ¡Puedes hacerlo mejor! si York pudo tu tambien`;
-        } else if (dano >= 1000) {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Tienes que mejorar para pegar como York.`;
+            mensajeRespuesta = `Golpe decente: **${dano}**. Si York pudo, tú también puedes... supongo.`;
+        } else if (dano >= 500) {
+            mensajeRespuesta = `Daño: **${dano}**. Tienes que mejorar esa técnica si quieres ser un Asesino.`;
         } else {
-            mensajeRespuesta = `Le has hecho al punch un daño de ${dano}. Debes mejorar tu técnica para alcanzar un buen daño. Mejorate el set manco att: York`;
+            mensajeRespuesta = `¿Eso fue un golpe o una caricia? Daño: **${dano}**. Mejorate el set, manco. Atentamente: York.`;
+            colorEmbed = 0xE74C3C; // Rojo
         }
-        
-        // Envía el mensaje completo al canal
-        message.channel.send(mensajeRespuesta);
+
+        // --- LÓGICA DE RÉCORD (DINÁMICO) ---
+        // Buscamos si hay un récord guardado
+        const recordActual = await GlobalConfig.findByPk('record_york');
+        const recordValor = recordActual ? parseInt(recordActual.value) : 0;
+        let esNuevoRecord = false;
+
+        if (dano > recordValor) {
+            await GlobalConfig.upsert({ key: 'record_york', value: dano.toString() });
+            await GlobalConfig.upsert({ key: 'record_york_user', value: interaction.user.username });
+            esNuevoRecord = true;
+        }
+
+        // --- RESPUESTA EN EMBED ---
+        const embed = new EmbedBuilder()
+            .setColor(colorEmbed)
+            .setTitle('🥊 Entrenamiento con el Punch')
+            .setDescription(mensajeRespuesta)
+            .addFields(
+                { name: '💥 Tu Daño', value: `\`${dano}\``, inline: true },
+                { name: '🏆 Récord Actual', value: `${recordActual ? recordActual.value : '0'} (por ${recordActual ? (await GlobalConfig.findByPk('record_york_user')).value : 'Nadie'})`, inline: true }
+            )
+            .setTimestamp();
+
+        if (esNuevoRecord && dano < 3000) {
+            embed.setFooter({ text: '✨ ¡Acabas de establecer un nuevo récord personal/global!' });
+        }
+
+        return interaction.reply({ embeds: [embed] });
     },
 };
