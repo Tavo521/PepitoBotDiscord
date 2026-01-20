@@ -1,77 +1,75 @@
-const { AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 module.exports = {
-    name: 'resultados',
-    async execute(message, args) {
-        // 1. Verificación de permisos (Solo Administradores)
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ No tienes permisos para generar reportes.');
-        }
+    data: new SlashCommandBuilder()
+        .setName('generar_reporte')
+        .setDescription('Genera un archivo .txt con los rangos específicos del gremio.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-        // CORRECCIÓN: Nombre de archivo en minúscula para el hosting
-        const { Puntos } = require('../Pepito.js');
+    async execute(interaction) {
+        const { Puntos } = require('../Pepito.js'); 
 
         try {
-            // 2. Obtener todos los usuarios de la DB ordenados por puntos
-            const listaCompleta = await Puntos.findAll({
-                order: [['defensa', 'DESC']]
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+            const listaDB = await Puntos.findAll({
+                order: [['defensa', 'DESC']],
             });
 
-            if (listaCompleta.length === 0) {
-                return message.reply('No hay datos registrados en la base de datos.');
+            if (listaDB.length === 0) {
+                return interaction.editReply("❌ No hay datos registrados en la base de datos.");
             }
 
-            // 3. Definición de las 3 franjas
-            const franjas = [
-                { nombre: 'T3 (6 Percos)', min: 160 },
-                { nombre: 'T2 (2 Percos)', min: 80 },
-                { nombre: 'T1 (1 Perco) ', min: 0 }
-            ];
+            let contenidoReporte = "REPORTE OFICIAL DE RANGOS - CLUB ASESINOS\n";
+            contenidoReporte += `Fecha: ${new Date().toLocaleString()}\n`;
+            contenidoReporte += "===========================================================================\n";
+            contenidoReporte += "POS | USUARIO              | PUNTOS | RANGO\n";
+            contenidoReporte += "---------------------------------------------------------------------------\n";
 
-            // 4. CORRECCIÓN: Obtener nombres de forma asíncrona para el reporte
-            const lineasReporte = await Promise.all(listaCompleta.map(async (u, index) => {
-                let nombre = "Desconocido";
+            for (let i = 0; i < listaDB.length; i++) {
+                const fila = listaDB[i];
+                let nombreDisplay = "Desconocido";
+
                 try {
-                    // Buscamos al miembro en el servidor por su ID
-                    const miembro = await message.guild.members.fetch(u.userId);
-                    nombre = miembro.displayName;
+                    const miembro = await interaction.guild.members.fetch(fila.userId);
+                    nombreDisplay = miembro.displayName;
                 } catch (e) {
-                    nombre = `ID:${u.userId} (Salió del gremio)`;
+                    nombreDisplay = `ID:${fila.userId}`;
                 }
-                
-                // Buscar la franja correspondiente
-                const rangoAlcanzado = franjas.find(f => u.defensa >= f.min)?.nombre || 'Sin Rango';
-                const pos = (index + 1).toString().padStart(2, '0');
 
-                // Retornamos la línea formateada
-                return `${pos.padEnd(5)} ${rangoAlcanzado.padEnd(15)} ${nombre.padEnd(25)} | ${u.defensa} pts`;
-            }));
+                // --- LÓGICA DE RANGOS ACTUALIZADA ---
+                let rango = "Sin Rango"; 
+                if (fila.defensa >= 160) {
+                    rango = "T3 6 Percos zona 1-200";
+                } else if (fila.defensa >= 80) { // De 80 a 159
+                    rango = "T2 2 Perco zona 1-160";
+                } else if (fila.defensa >= 1) { // De 1 a 79
+                    rango = "T3 1 Percos zona 1-120";
+                }
 
-            // 5. Construcción del texto final del reporte
-            let reporte = `📋 REPORTE FINAL DE TEMPORADA - CLUB ASESINOS\n`;
-            reporte += `Generado el: ${new Date().toLocaleString()}\n`;
-            reporte += `Total Participantes: ${listaCompleta.length}\n`;
-            reporte += `----------------------------------------------------------\n`;
-            reporte += `${'POS'.padEnd(5)} ${'RANGO'.padEnd(15)} ${'USUARIO'.padEnd(25)} | PUNTOS\n`;
-            reporte += `----------------------------------------------------------\n`;
-            
-            reporte += lineasReporte.join('\n');
+                // Formateo de columnas (ajustado para nombres largos de rango)
+                const pos = (i + 1).toString().padStart(3, ' ');
+                const user = nombreDisplay.padEnd(20).substring(0, 20);
+                const pts = fila.defensa.toString().padStart(6, ' ');
+                const rng = rango; // Al final de la línea no necesita padEnd fijo
 
-            reporte += `\n----------------------------------------------------------\n`;
-            reporte += `Fin del reporte.`;
+                contenidoReporte += `${pos} | ${user} | ${pts} | ${rng}\n`;
+            }
 
-            // 6. Crear archivo y enviar
-            const buffer = Buffer.from(reporte, 'utf-8');
-            const attachment = new AttachmentBuilder(buffer, { name: 'resultados_finales_asesinos.txt' });
+            contenidoReporte += "===========================================================================\n";
+            contenidoReporte += "FIN DEL REPORTE.";
 
-            await message.channel.send({
-                content: '📊 **Reporte completo de la temporada generado.** Los nombres han sido sincronizados correctamente.',
+            const buffer = Buffer.from(contenidoReporte, 'utf-8');
+            const attachment = new AttachmentBuilder(buffer, { name: 'Reporte_Rangos_Asesinos.txt' });
+
+            await interaction.editReply({
+                content: "✅ Reporte de rangos generado exitosamente.",
                 files: [attachment]
             });
 
         } catch (error) {
-            console.error('Error al generar reporte:', error);
-            message.reply('Hubo un error al procesar el reporte de resultados.');
+            console.error("Error al generar el reporte:", error);
+            await interaction.editReply("❌ Hubo un error al procesar los rangos.");
         }
     },
 };

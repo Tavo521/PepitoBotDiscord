@@ -36,8 +36,8 @@ module.exports = {
                 },
                 { 
                     name: '🐴 Niveles de Percos', 
-                    value: '• **T1 (1 Perco - Zona 1 a 120 🐴): ** 0-80 pts\n' +
-                           '• **T2 (2 Percos - Zona 1 a 160 🐴):** 40-79 pts\n' +
+                    value: '• **T1 (1 Perco - Zona 1 a 120 🐴): ** 0-79 pts\n' +
+                           '• **T2 (2 Percos - Zona 1 a 160 🐴):** 80-159 pts\n' +
                            '• **T3 (6 Percos - Zona 1 a 200 🐴):** 160+ pts'
                 }
             )

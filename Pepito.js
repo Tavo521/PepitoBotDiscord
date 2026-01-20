@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, Collection, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const { Sequelize, DataTypes } = require('sequelize');
@@ -31,12 +31,25 @@ const Puntos = sequelize.define('Puntos', {
     defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
-sequelize.authenticate()
-    .then(() => {
+const GlobalConfig = sequelize.define('GlobalConfig', {
+    key: { type: DataTypes.STRING, primaryKey: true },
+    value: { type: DataTypes.STRING }
+});
+
+async function conectarDB() {
+    try {
+        await sequelize.authenticate();
         console.log('✅ Conexión a MySQL establecida.');
-        return Puntos.sync();
-    })
-    .catch(err => console.error('❌ Error conectando a MySQL:', err));
+        
+        await Puntos.sync();
+        await GlobalConfig.sync();
+        console.log('✅ Tablas sincronizadas correctamente.');
+    } catch (err) {
+        console.error('❌ Error conectando o sincronizando la DB:', err);
+    }
+}
+
+conectarDB();
 
 // --- CARGA DE COMANDOS ---
 client.commands = new Collection();
@@ -94,24 +107,51 @@ client.on("messageCreate", async (message) => {
 // --- EVENTO 2: Manejo de Interacciones ---
 client.on(Events.InteractionCreate, async (interaction) => {
     
+    // 1. Manejo de Comandos de Barra (/)
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error("Error ejecutando comando: ", error);
+            if (interaction.deferred || interaction.replied) {
+                await interaction.followUp({ content: 'Hubo un error interno.', ephemeral: true });
+            } else {
+                await interaction.reply({ content: 'Hubo un error interno.', ephemeral: true });
+            }
+        }
+        return;
+    }
+
+    // 2. Manejo de Botones
     if (interaction.isButton()) {
+        // Ignorar botones de comandos especiales (se manejan en sus propios archivos)
+        const botonesEspeciales = ['confirmar_borrado', 'cancelar_borrado', 'record_york'];
+        if (botonesEspeciales.includes(interaction.customId)) return;
+
         const nombreRolAdmin = "comandantes"; 
         if (!interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin)) {
             return interaction.reply({ content: "❌ Solo los **Comandantes** pueden validar puntos.", ephemeral: true });
         }
 
+        // PROTECCIÓN: Evita el error de messageId si no hay referencia
+        if (!interaction.message || !interaction.message.reference) {
+            return; 
+        }
+
         const partes = interaction.customId.split('_');
         const accion = partes[0];
-        const valorPuntos = partes[1]; // Representa puntos finales o base según la acción
+        const valorPuntos = partes[1];
 
         // --- LÓGICA PARA REVERTIR/EDITAR PUNTOS ---
         if (accion === 'editar') {
-            const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-            const usuariosParaRestar = mensajeOriginal.mentions.users;
-            const puntosARestar = parseInt(valorPuntos);
-            const puntosBaseOriginales = partes[2]; // Recuperamos el valor base para restaurar botones
-
             try {
+                const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+                const usuariosParaRestar = mensajeOriginal.mentions.users;
+                const puntosARestar = parseInt(valorPuntos);
+                const puntosBaseOriginales = partes[2];
+
                 for (const [userId, user] of usuariosParaRestar) {
                     const registro = await Puntos.findByPk(userId);
                     if (registro) {
@@ -119,7 +159,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     }
                 }
 
-                // Restaurar botones originales
                 const rowRestaurada = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
@@ -133,33 +172,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 });
 
                 await actualizarRankingFijo(interaction.guild);
-                return;
             } catch (error) {
                 console.error("Error al editar:", error);
-                return interaction.reply({ content: "Hubo un error al intentar revertir los puntos.", ephemeral: true });
             }
+            return;
         }
 
-        // --- LÓGICA PARA RECHAZAR ---
         if (accion === 'rechazar') {
             return interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
         }
 
         // --- LÓGICA PARA APROBAR / DOBLE ---
-        const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-        const usuariosParaSumar = mensajeOriginal.mentions.users;
-
-        if (usuariosParaSumar.size === 0) return interaction.reply({ content: "Error: No hay usuarios.", ephemeral: true });
-
-        let puntosFinales = parseInt(valorPuntos);
-        let mensajeExito = `✅ **Puntos aprobados.**`;
-
-        if (accion === 'doble') {
-            puntosFinales *= 2;
-            mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
-        }
-
         try {
+            const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+            const usuariosParaSumar = mensajeOriginal.mentions.users;
+
+            if (usuariosParaSumar.size === 0) return interaction.reply({ content: "Error: No hay usuarios.", ephemeral: true });
+
+            let puntosFinales = parseInt(valorPuntos);
+            let mensajeExito = `✅ **Puntos aprobados.**`;
+
+            if (accion === 'doble') {
+                puntosFinales *= 2;
+                mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
+            }
+
             for (const [userId, user] of usuariosParaSumar) {
                 const [puntosRegistro] = await Puntos.findOrCreate({
                     where: { userId: userId },
@@ -168,8 +205,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await puntosRegistro.increment('defensa', { by: puntosFinales });
             }
 
-            // Creamos el botón de Editar/Corregir
-            // Guardamos: editar_PUNTOSFINALEs_PUNTOSBASE (para poder restaurar los botones luego)
             const rowEditar = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -186,20 +221,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await actualizarRankingFijo(interaction.guild); 
 
         } catch (error) {
-            console.error(error);
-        }
-    }
-
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error("Error ejecutando comando: ",error);
-            if (interaction.deferred){
-                await interaction.followUp({ content: 'Hubo un error interno.', ephemeral: true });
-            }
+            console.error("Error en aprobación:", error);
         }
     }
 });
@@ -255,4 +277,4 @@ client.once("ready", () => {
 
 client.login(process.env.DISCORD_TOKEN);
 
-module.exports = { Puntos };
+module.exports = { Puntos, GlobalConfig, actualizarRankingFijo };
