@@ -44,7 +44,7 @@ module.exports = {
                 } else if (fila.defensa >= 80) { // De 80 a 159
                     rango = "T2 2 Perco zona 1-160";
                 } else if (fila.defensa >= 1) { // De 1 a 79
-                    rango = "T3 1 Percos zona 1-120";
+                    rango = "T1 1 Percos zona 1-120";
                 }
 
                 // Formateo de columnas (ajustado para nombres largos de rango)

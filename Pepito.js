@@ -104,7 +104,7 @@ client.on("messageCreate", async (message) => {
     if (message.channel.name.toLowerCase() !== "⚔️-evidencias") return;
 
     const puntosKeywords = {
-        'atkperco': 5, 'atkprisma': 2, 'ava': 5,
+        'atkperco': 5, 'atk': 2, 'ava': 5, 'atkd': 5,
         'def1': 2, 'def2': 4, 'def3': 6, 'def4': 8, 'def5': 10,
         'time5': 1, 'time10': 2, 'time20': 3, 'time30': 4, 'time40': 5
     };
