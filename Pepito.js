@@ -2,7 +2,7 @@ require("dotenv").config();
 const {
     Client, Collection, GatewayIntentBits, Events, ActionRowBuilder,
     ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder,
-    TextInputBuilder, TextInputStyle
+    TextInputBuilder, TextInputStyle, MessageFlags
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -121,7 +121,7 @@ client.on("messageCreate", async (message) => {
     try {
         // 1. Obtenemos todas las palabras
         let allKeywords = await Keyword.findAll();
-        
+
         // 2. LA SOLUCIÓN: Ordenamos de mayor a menor longitud (descendente)
         // Así 'atkperco' (8 letras) se evalúa ANTES que 'atk' (3 letras)
         allKeywords = allKeywords.sort((a, b) => b.word.length - a.word.length);
@@ -144,7 +144,7 @@ client.on("messageCreate", async (message) => {
                 new ButtonBuilder().setCustomId(`doble_${puntosBase}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
             );
-            
+
             await message.reply({
                 content: `📢 **Solicitud de Puntos:**\nValor base: **${puntosBase} pts**\nUsuarios: ${usuariosMencionados.map(u => `<@${u.id}>`).join(', ')}`,
                 components: [row]
@@ -159,16 +159,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // A. COMANDOS DE BARRA
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
-            if (command) {
-                try { await command.execute(interaction); }
-                catch (err) { console.error(err); }
-            }
+            if (command) await command.execute(interaction);
             return;
         }
 
         // B. BOTONES
         if (interaction.isButton()) {
-            // 1. Botones para abrir Modals del Panel
+            const nombreRolAdmin = "comandantes";
+            const esComandante = interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin);
+
+            // 1. VALIDACIÓN GLOBAL DE ROL PARA BOTONES ADMINISTRATIVOS
+            // Filtramos: si es un botón de KW o de validación de puntos, exigimos rol.
+            const esBotonAdmin = interaction.customId.startsWith('kw_') ||
+                ['aprobar', 'doble', 'rechazar', 'editar'].some(op => interaction.customId.startsWith(op));
+
+            if (esBotonAdmin && !esComandante) {
+                return await interaction.reply({
+                    content: "❌ Solo los **Comandantes** pueden realizar esta acción.",
+                    ephemeral: true
+                });
+            }
+
+            // --- A PARTIR DE AQUÍ, YA SABEMOS QUE ES COMANDANTE ---
+
+            // 2. Lógica de Modals del Panel (Añadir/Eliminar)
             if (interaction.customId === 'kw_add') {
                 const modal = new ModalBuilder().setCustomId('modal_kw_add').setTitle('Añadir o Editar Palabra');
                 const wordInput = new TextInputBuilder().setCustomId('kw_word').setLabel("Palabra (ej: atkperco)").setStyle(TextInputStyle.Short).setRequired(true);
@@ -190,125 +204,140 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
-            // 2. Validación de Comandantes para Puntos
+            // 3. Lógica de Validación de Puntos de Evidencias
             const botonesEspeciales = ['confirmar_borrado', 'cancelar_borrado', 'record_york'];
             if (botonesEspeciales.includes(interaction.customId)) return;
 
-            const nombreRolAdmin = "comandantes";
-            if (!interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin)) {
-                return interaction.reply({ content: "❌ Solo los **Comandantes** pueden validar puntos.", ephemeral: true });
-            }
-
             if (!interaction.message || !interaction.message.reference) return;
+
             const partes = interaction.customId.split('_');
             const accion = partes[0];
             const valorPuntos = partes[1];
 
-            // Lógica Editar/Revertir
+            // Revertir / Editar Puntos
             if (accion === 'editar') {
-                try {
-                    const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-                    const usuariosParaRestar = mensajeOriginal.mentions.users;
-                    const puntosARestar = parseInt(valorPuntos);
-                    const puntosBaseOriginales = partes[2];
-
-                    for (const [userId] of usuariosParaRestar) {
-                        const registro = await Puntos.findByPk(userId);
-                        if (registro) await registro.decrement('defensa', { by: puntosARestar });
-                    }
-
-                    const rowRestaurada = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
-                        new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
-                        new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
-                    );
-
-                    await interaction.update({
-                        content: `🔄 **Puntos revertidos (-${puntosARestar} pts).** Esperando nueva validación...`,
-                        components: [rowRestaurada]
-                    });
-                    await actualizarRankingFijo(interaction.guild);
-                } catch (e) { console.error(e); }
-                return;
-            }
-
-            if (accion === 'rechazar') {
-                return interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
-            }
-
-            // Lógica Aprobar / Doble
-            try {
                 const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-                const usuariosParaSumar = mensajeOriginal.mentions.users;
-                if (usuariosParaSumar.size === 0) return;
+                const usuariosParaRestar = mensajeOriginal.mentions.users;
+                const puntosARestar = parseInt(valorPuntos);
+                const puntosBaseOriginales = partes[2];
 
-                let puntosFinales = parseInt(valorPuntos);
-                let mensajeExito = `✅ **Puntos aprobados.**`;
-
-                if (accion === 'doble') {
-                    puntosFinales *= 2;
-                    mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
+                for (const [userId] of usuariosParaRestar) {
+                    const registro = await Puntos.findByPk(userId);
+                    if (registro) await registro.decrement('defensa', { by: puntosARestar });
                 }
 
-                for (const [userId] of usuariosParaSumar) {
-                    const [puntosRegistro] = await Puntos.findOrCreate({ where: { userId }, defaults: { defensa: 0 } });
-                    await puntosRegistro.increment('defensa', { by: puntosFinales });
-                }
-
-                const rowEditar = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`editar_${puntosFinales}_${valorPuntos}`).setLabel('Corregir / Editar ✏️').setStyle(ButtonStyle.Secondary)
+                const rowRestaurada = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
                 );
 
                 await interaction.update({
-                    content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Por: ${interaction.user.username}*`,
-                    components: [rowEditar]
+                    content: `🔄 **Puntos revertidos (-${puntosARestar} pts).** Esperando nueva validación...`,
+                    components: [rowRestaurada]
                 });
-                await actualizarRankingFijo(interaction.guild);
-            } catch (e) { console.error(e); }
+                return await actualizarRankingFijo(interaction.guild);
+            }
+
+            if (accion === 'rechazar') {
+                return await interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
+            }
+
+            // Aprobar / Doble Puntos
+            const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+            const usuariosParaSumar = mensajeOriginal.mentions.users;
+            if (usuariosParaSumar.size === 0) return;
+
+            let puntosFinales = parseInt(valorPuntos);
+            let mensajeExito = `✅ **Puntos aprobados.**`;
+
+            if (accion === 'doble') {
+                puntosFinales *= 2;
+                mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
+            }
+
+            for (const [userId] of usuariosParaSumar) {
+                const [puntosRegistro] = await Puntos.findOrCreate({ where: { userId }, defaults: { defensa: 0 } });
+                await puntosRegistro.increment('defensa', { by: puntosFinales });
+            }
+
+            const rowEditar = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`editar_${puntosFinales}_${valorPuntos}`).setLabel('Corregir / Editar ✏️').setStyle(ButtonStyle.Secondary)
+            );
+
+            await interaction.update({
+                content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Por: ${interaction.user.username}*`,
+                components: [rowEditar]
+            });
+            await actualizarRankingFijo(interaction.guild);
         }
 
         // C. SUBMIT DE MODALS
         if (interaction.isModalSubmit()) {
             if (interaction.customId === 'modal_kw_add') {
-                try {
-                    const word = interaction.fields.getTextInputValue('kw_word').toLowerCase().trim();
-                    const points = parseInt(interaction.fields.getTextInputValue('kw_points'));
-                    const category = interaction.fields.getTextInputValue('kw_category').toUpperCase().trim();
+                const word = interaction.fields.getTextInputValue('kw_word').toLowerCase().trim();
+                const points = parseInt(interaction.fields.getTextInputValue('kw_points'));
+                const category = interaction.fields.getTextInputValue('kw_category').toUpperCase().trim();
 
-                    if (isNaN(points)) return interaction.reply({ content: '❌ El puntaje debe ser un número.', ephemeral: true });
+                if (isNaN(points)) return await interaction.reply({ content: '❌ El puntaje debe ser un número.', ephemeral: true });
 
-                    await Keyword.upsert({ word, points, category });
-                    await actualizarPanelAutomatico(interaction);
-                    return await interaction.reply({ content: `✅ Palabra \`${word}\` guardada en **${category}**.`, ephemeral: true });
-                } catch (err) { console.error(err); }
+                await Keyword.upsert({ word, points, category });
+                await actualizarPanelAutomatico(interaction);
+                // ENVIAR LOG
+                await enviarLogAuditoria(
+                    interaction.guild,
+                    interaction.user,
+                    'AÑADIR / EDITAR',
+                    `Palabra: \`${word}\` | Puntos: **${points}** | Categoría: **${category}**`,
+                    0x2ecc71 // Verde
+                );
+                return await interaction.reply({ content: `✅ Palabra \`${word}\` guardada.`, ephemeral: true });
             }
 
             if (interaction.customId === 'modal_kw_del') {
                 try {
                     const word = interaction.fields.getTextInputValue('kw_word_del').toLowerCase().trim();
+
+                    // Buscamos la palabra antes de borrarla para saber qué categoría tenía (opcional para el log)
+                    const palabraData = await Keyword.findByPk(word);
                     const deleted = await Keyword.destroy({ where: { word } });
-                    await actualizarPanelAutomatico(interaction);
-                    return await interaction.reply({ content: deleted ? `🗑️ \`${word}\` eliminada.` : `❌ No encontrada.`, ephemeral: true });
+
+                    if (deleted) {
+                        await actualizarPanelAutomatico(interaction);
+
+                        // LOG DE AUDITORÍA CORREGIDO (Sin la variable points)
+                        await enviarLogAuditoria(
+                            interaction.guild,
+                            interaction.user,
+                            'ELIMINAR',
+                            `La palabra \`${word}\` (Categoría: ${palabraData?.category || 'Desconocida'}) fue removida del sistema.`,
+                            0xe74c3c // Rojo
+                        );
+
+                        return await interaction.reply({
+                            content: `🗑️ \`${word}\` eliminada correctamente.`,
+                            flags: [MessageFlags.Ephemeral] // Nueva forma de enviar mensajes privados
+                        });
+                    } else {
+                        return await interaction.reply({
+                            content: `❌ No se encontró la palabra \`${word}\`.`,
+                            flags: [MessageFlags.Ephemeral]
+                        });
+                    }
                 } catch (err) { console.error(err); }
             }
         }
+
     } catch (error) {
-        // ESTO ES LO QUE VERÁS EN LA CONSOLA
         console.error("============== ERROR DETECTADO ==============");
-        console.error(`Tipo de Interacción: ${interaction.type}`);
-        console.error(`ID del Componente: ${interaction.customId || 'N/A'}`);
-        console.error(`Usuario: ${interaction.user.tag}`);
-        console.error("Error original:", error);
+        console.error(`Componente: ${interaction.customId || 'Comando'}`);
+        console.error(error);
         console.error("=============================================");
 
-        // Opcional: Avisar al usuario en Discord que algo explotó
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: '❌ Error interno al procesar esto.', ephemeral: true }).catch(() => { });
-        } else {
-            await interaction.reply({ content: '❌ Error interno al procesar esto.', ephemeral: true }).catch(() => { });
-        }
+        const msgError = { content: '❌ Hubo un error al procesar esta acción.', ephemeral: true };
+        if (interaction.replied || interaction.deferred) await interaction.followUp(msgError).catch(() => { });
+        else await interaction.reply(msgError).catch(() => { });
     }
-
 });
 
 // --- FUNCIÓN RANKING ---
@@ -346,7 +375,7 @@ async function actualizarRankingFijo(guild) {
 async function actualizarPanelAutomatico(interaction) {
     try {
         const keywords = await Keyword.findAll();
-        
+
         // Reconstruimos el Embed desde cero
         const nuevoEmbed = new EmbedBuilder()
             .setTitle('⚙️ Panel de Palabras Clave')
@@ -365,7 +394,7 @@ async function actualizarPanelAutomatico(interaction) {
                     .filter(k => k.category === cat)
                     .map(k => `\`${k.word}\` ➔ ${k.points} pts`)
                     .join('\n');
-                
+
                 if (lista.trim()) {
                     nuevoEmbed.addFields({ name: `⚔️ ${cat.toUpperCase()}`, value: lista, inline: true });
                 }
@@ -377,6 +406,29 @@ async function actualizarPanelAutomatico(interaction) {
 
     } catch (error) {
         console.error("Error al auto-actualizar el panel:", error);
+    }
+}
+
+async function enviarLogAuditoria(guild, usuario, accion, detalle, color) {
+    const CANAL_LOGS_ID = process.env.LOG_CHANNEL_ID;
+    if (!CANAL_LOGS_ID) return;
+
+    try {
+        const canal = await guild.channels.fetch(CANAL_LOGS_ID);
+        const embedLog = new EmbedBuilder()
+            .setTitle('📝 Registro de Auditoría - Keywords')
+            .setColor(color)
+            .addFields(
+                { name: '👤 Usuario', value: `${usuario.tag} (${usuario.id})`, inline: true },
+                { name: '🛠️ Acción', value: accion, inline: true },
+                { name: '📄 Detalle', value: detalle }
+            )
+            .setTimestamp()
+            .setThumbnail(usuario.displayAvatarURL());
+
+        await canal.send({ embeds: [embedLog] });
+    } catch (error) {
+        console.error("❌ Error al enviar log de auditoría:", error);
     }
 }
 
