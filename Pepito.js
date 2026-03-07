@@ -168,6 +168,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const nombreRolAdmin = "comandantes";
             const esComandante = interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin);
 
+            // --- NUEVO BLOQUE: Consulta de Puesto (Accesible para TODOS) ---
+            if (interaction.customId === 'ver_mi_puesto') {
+                try {
+                    // Obtenemos todos los registros para calcular el puesto real
+                    const todos = await Puntos.findAll({ order: [['defensa', 'DESC']] });
+                    const index = todos.findIndex(u => u.userId === interaction.user.id);
+
+                    if (index === -1) {
+                        return await interaction.reply({
+                            content: "❌ No tienes puntos registrados aún. ¡Participa en recaudadores para subir!",
+                            flags: [MessageFlags.Ephemeral]
+                        });
+                    }
+
+                    const puesto = index + 1;
+                    const pts = todos[index].defensa;
+                    let derechos = "";
+
+                    // Lógica completa de distribución (T2 y T1)
+                    if (puesto <= 10) derechos = "🔹 **4 Percos T2**";
+                    else if (puesto <= 20) derechos = "🔸 **3 Percos T2**";
+                    else if (puesto <= 30) derechos = "🔸 **2 Percos T2**";
+                    else if (puesto <= 40) derechos = "▫️ **2 Percos T1** (Máx lvl 140)";
+                    else derechos = "▫️ **1 Perco T1** (Máx lvl 140)";
+
+                    return await interaction.reply({
+                        content: `👤 **Consulta de Rango:**\n\n📌 Posición: **#${puesto}**\n📌 Puntos: **${pts} pts**\n📌 Derechos: ${derechos}`,
+                        flags: [MessageFlags.Ephemeral]
+                    });
+                } catch (e) {
+                    console.error("Error en botón ver_mi_puesto:", e);
+                    return await interaction.reply({ content: "Error al consultar puesto.", flags: [MessageFlags.Ephemeral] });
+                }
+            }
+            // -------------------------------------------------------------
+
             // 1. VALIDACIÓN GLOBAL DE ROL PARA BOTONES ADMINISTRATIVOS
             // Filtramos: si es un botón de KW o de validación de puntos, exigimos rol.
             const esBotonAdmin = interaction.customId.startsWith('kw_') ||
@@ -205,7 +241,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
 
             // 3. Lógica de Validación de Puntos de Evidencias
-            const botonesEspeciales = ['confirmar_borrado', 'cancelar_borrado', 'record_york'];
+            const botonesEspeciales = ['record_york'];
             if (botonesEspeciales.includes(interaction.customId)) return;
 
             if (!interaction.message || !interaction.message.reference) return;
@@ -345,30 +381,64 @@ async function actualizarRankingFijo(guild) {
     const CANAL_ID = process.env.RANKING_CHANNEL_ID;
     const MENSAJE_ID = process.env.RANKING_MESSAGE_ID;
     if (!CANAL_ID || !MENSAJE_ID) return;
+
     try {
         const canal = await guild.channels.fetch(CANAL_ID);
         const mensaje = await canal.messages.fetch(MENSAJE_ID);
-        const listaCompleta = await Puntos.findAll({ order: [['defensa', 'DESC']] });
+
+        // LIMITAMOS A LOS MEJORES 30
+        const listaCompleta = await Puntos.findAll({
+            order: [['defensa', 'DESC']],
+            limit: 30
+        });
 
         const listaPromesas = listaCompleta.map(async (u, index) => {
             let nombre = "Desconocido";
             try {
                 const miembro = await guild.members.fetch(u.userId);
                 nombre = miembro.displayName;
-            } catch { nombre = `Ex-miembro (${u.userId})`; }
-            let medalla = (index === 0) ? "🥇 " : (index === 1) ? "🥈 " : (index === 2) ? "🥉 " : `${index + 1}. `;
-            return `${medalla}**${nombre}** — ${u.defensa} pts`;
+            } catch { nombre = "Ex-miembro"; }
+
+            const puesto = index + 1;
+            let derechos = "";
+
+            // Tu lógica de distribución
+            if (puesto <= 10) derechos = "🔹 **4 T2**";
+            else if (puesto <= 20) derechos = "🔸 **3 T2**";
+            else if (puesto <= 30) derechos = "🔸 **2 T2**";
+            else if (puesto <= 40) derechos = "▫️ **2 T1**";
+            else derechos = "▫️ **1 T1**";
+
+            let medalla = (puesto === 1) ? "🥇 " : (puesto === 2) ? "🥈 " : (puesto === 3) ? "🥉 " : `${puesto}. `;
+
+            // Formato compacto para que quepan los 30 sin problemas
+            return `${medalla}**${nombre}** — ${u.defensa} pts | ${derechos}`;
         });
 
         const listaFinal = await Promise.all(listaPromesas);
+
         const embed = new EmbedBuilder()
             .setColor(0xf1c40f)
-            .setTitle('🏆 Ranking General - Club Asesinos')
-            .setDescription(listaFinal.join('\n') || "No hay datos.")
+            .setTitle('🏆 Top 30 Guerreros - Club Asesinos')
             .setThumbnail('attachment://Club_asesinos.png')
+            .setDescription(listaFinal.join('\n') || "No hay datos.")
+            .addFields({
+                name: '📌 Info Niveles y Percos',
+                value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Niveles 140 o menos.\n\n*Si no apareces en el Top 30, pulsa el botón de abajo.*',
+                inline: false
+            })
             .setTimestamp();
 
-        await mensaje.edit({ embeds: [embed] });
+        // El botón mágico para los que no salen en el Top
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('ver_mi_puesto')
+                .setLabel('Ver mi posición 👤')
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        await mensaje.edit({ embeds: [embed], components: [row] });
+
     } catch (error) { console.error('Error Ranking:', error); }
 }
 
