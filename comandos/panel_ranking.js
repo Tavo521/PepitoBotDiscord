@@ -31,9 +31,20 @@ module.exports = {
                 } catch (e) {
                     nombre = `Ex-miembro (${u.userId})`;
                 }
-                
-                let medalla = (index === 0) ? "🥇 " : (index === 1) ? "🥈 " : (index === 2) ? "🥉 " : `${index + 1}. `;
-                return `${medalla}**${nombre}** — ${u.defensa} pts`;
+
+                const puesto = index + 1;
+                let derechos = "";
+
+                // Lógica de la nueva distribución
+                if (puesto <= 10) derechos = "🔹 **4 Percos T2**";
+                else if (puesto <= 20) derechos = "🔸 **3 Percos T2**";
+                else if (puesto <= 30) derechos = "🔸 **2 Percos T2**";
+                else if (puesto <= 40) derechos = "▫️ **2 Percos T1**";
+                else derechos = "▫️ **1 Perco T1**";
+
+                let medalla = (puesto === 1) ? "🥇 " : (puesto === 2) ? "🥈 " : (puesto === 3) ? "🥉 " : `${puesto}. `;
+
+                return `${medalla}**${nombre}** — ${u.defensa} pts\n└> ${derechos}`;
             });
 
             const listaFinal = await Promise.all(listaPromesas);
@@ -48,13 +59,18 @@ module.exports = {
                 .setTitle('🏆 Ranking General - Gremio Club Asesinos')
                 .setThumbnail('attachment://Club_asesinos.png')
                 .setDescription(rankingTexto)
-                .setFooter({ text: 'Sistema de actualización automática activado' })
+                .addFields({
+                    name: '📌 Información de Rangos',
+                    value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Solo niveles 140 o menos.',
+                    inline: false
+                })
+                .setFooter({ text: 'La cantidad de percos se actualiza con tu posición en el ranking.' })
                 .setTimestamp();
 
             // 5. Enviar el mensaje fijo al canal
-            const mensajeEnviado = await interaction.channel.send({ 
-                embeds: [embed], 
-                files: [file] 
+            const mensajeEnviado = await interaction.channel.send({
+                embeds: [embed],
+                files: [file]
             });
 
         } catch (error) {

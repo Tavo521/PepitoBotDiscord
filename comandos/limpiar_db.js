@@ -22,7 +22,10 @@ module.exports = {
             flags: [MessageFlags.Ephemeral]
         });
 
+        const filter = i => i.user.id === interaction.user.id;
+
         const collector = response.createMessageComponentCollector({ 
+            filter,
             componentType: ComponentType.Button, 
             time: 30000 
         });
@@ -48,8 +51,17 @@ module.exports = {
                     console.error(error);
                     await i.update({ content: '❌ Error al intentar limpiar la base de datos.', components: [] });
                 }
-            } else {
-                await i.update({ content: '✅ Acción cancelada.', components: [] });
+            } else if(i.customId === 'cancelar_borrado'){
+                await i.update({ 
+                    content: '✅ **Acción cancelada.** No se han realizado cambios.', 
+                    components: [] 
+                });
+            }
+        });
+
+        collector.on('end', collected => {
+            if (collected.size === 0) {
+                interaction.editReply({ content: '⏰ Tiempo agotado. Acción cancelada.', components: [] }).catch(() => {});
             }
         });
     },
