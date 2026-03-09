@@ -16,20 +16,25 @@ module.exports = {
                 )),
 
     async execute(interaction) {
+        console.log(">>> [DEBUG 1] Ejecutando comando /panel_ranking...");
         await interaction.deferReply({ ephemeral: true });
 
-        const { Puntos } = require('../Pepito.js'); // Solo importamos el modelo aquí
-        const serverDofus = interaction.options.getString('servidor');
-        
-        // CORRECCIÓN: Alineamos el nombre con el valor del Choice
-        const nombreDisplay = serverDofus === 'PRINCIPAL' ? 'Dakal' : 'Mikhal';
-
         try {
+            console.log(">>> [DEBUG 2] Cargando modelo Puntos desde Pepito.js...");
+            const { Puntos } = require('../Pepito.js'); 
+            
+            const serverDofus = interaction.options.getString('servidor');
+            const nombreDisplay = serverDofus === 'PRINCIPAL' ? 'Dakal' : 'Mikhal';
+            console.log(`>>> [DEBUG 3] Servidor seleccionado: ${serverDofus} (${nombreDisplay})`);
+
+            // Punto crítico: Consulta a la DB
+            console.log(">>> [DEBUG 4] Consultando base de datos SQL...");
             const listaCompleta = await Puntos.findAll({
                 where: { gameServer: serverDofus },
                 order: [['defensa', 'DESC']],
                 limit: 30 
             });
+            console.log(`>>> [DEBUG 5] DB respondió. Registros encontrados: ${listaCompleta.length}`);
 
             const listaPromesas = listaCompleta.map(async (u, index) => {
                 let nombre = "Desconocido";
@@ -49,9 +54,11 @@ module.exports = {
                 return `${medalla}**${nombre}** — ${u.defensa} pts | ${derechos}`;
             });
 
+            console.log(">>> [DEBUG 6] Procesando nombres de usuarios...");
             const listaFinal = await Promise.all(listaPromesas);
             const rankingTexto = listaFinal.join('\n') || "No hay datos registrados todavía.";
 
+            console.log(">>> [DEBUG 7] Preparando Embed y Archivos...");
             const imagePath = path.join(__dirname, '..', 'imagenes', 'Club_asesinos.png');
             const file = new AttachmentBuilder(imagePath);
 
@@ -70,15 +77,23 @@ module.exports = {
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    // IMPORTANTE: ver_mi_puesto_ (3 partes) + serverDofus (la 4ta parte)
                     .setCustomId(`ver_mi_puesto_${serverDofus}`)
                     .setLabel('Ver mi posición 👤')
                     .setStyle(ButtonStyle.Primary)
             );
 
+            console.log(">>> [DEBUG 8] Intentando enviar respuesta final a Discord...");
+            const mensajePanel = await interaction.channel.send({ embeds: [embed], files: [file], components: [row] });
+            
+            await interaction.editReply({ content: `✅ Panel de ${nombreDisplay} generado con éxito en este canal.` });
+            console.log(">>> [DEBUG 9] ¡Comando completado!");
+
         } catch (error) {
-            console.error('Error en ranking:', error);
-            await interaction.editReply({ content: 'Hubo un error al generar el ranking.' });
+            console.log(">>> [DEBUG ERROR] Se encontró un fallo:");
+            console.error(error); 
+            if (interaction.deferred) {
+                await interaction.editReply({ content: 'Hubo un error al generar el ranking. Revisa la consola del host.' });
+            }
         }
     },
 };
