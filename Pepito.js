@@ -31,7 +31,9 @@ const sequelize = new Sequelize(
 );
 
 const Puntos = sequelize.define('Puntos', {
-    userId: { type: DataTypes.STRING, primaryKey: true },
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    userId: { type: DataTypes.STRING, allowNull: false },
+    gameServer: { type: DataTypes.STRING, defaultValue: 'PRINCIPAL' }, // <--- NUEVO: Para diferenciar el server de Dofus
     defensa: { type: DataTypes.INTEGER, defaultValue: 0 },
 });
 
@@ -117,40 +119,72 @@ desplegarComandos();
 
 // --- EVENTO 1: Detección de Evidencias ---
 client.on("messageCreate", async (message) => {
-    if (message.author.bot || message.channel.name.toLowerCase() !== "⚔️-evidencias") return;
+    if (message.author.bot) return;
+
+    // 1. Definimos los nombres de tus canales de evidencias
+    const canalServer1 = "⚔️-evidencias-dakal"; // Cambia por el nombre real de tu canal 1
+    const canalServer2 = "⚔️-evidencias-mikhal"; // Cambia por el nombre real de tu canal 2
+    
+    const canalNombre = message.channel.name.toLowerCase();
+    let serverDofus = "";
+
+    // 2. Identificamos a qué servidor pertenece la evidencia
+    if (canalNombre === canalServer1) {
+        serverDofus = "DAKAL";
+    } else if (canalNombre === canalServer2) {
+        serverDofus = "MIKHAL";
+    } else if (canalNombre === "⚔️-evidencias") { 
+        serverDofus = "PRINCIPAL"; // Por si mantienes el canal antiguo
+    } else {
+        return; // Si no es ninguno de estos canales, ignoramos el mensaje
+    }
+
     try {
-        // 1. Obtenemos todas las palabras
+        // Obtenemos todas las palabras clave
         let allKeywords = await Keyword.findAll();
 
-        // 2. LA SOLUCIÓN: Ordenamos de mayor a menor longitud (descendente)
-        // Así 'atkperco' (8 letras) se evalúa ANTES que 'atk' (3 letras)
+        // Ordenamos por longitud para evitar conflictos (ej: atkperco vs atk)
         allKeywords = allKeywords.sort((a, b) => b.word.length - a.word.length);
 
         let puntosBase = 0;
         const contenido = message.content.toLowerCase();
 
-        // 3. Buscamos la coincidencia
+        // Buscamos la coincidencia de la palabra clave
         for (const kw of allKeywords) {
             if (contenido.includes(kw.word.toLowerCase())) {
                 puntosBase = kw.points;
-                break; // Se detiene en la coincidencia más larga encontrada
+                break;
             }
         }
 
         const usuariosMencionados = message.mentions.users;
+        
         if (usuariosMencionados.size > 0 && puntosBase > 0) {
+            // --- LA CLAVE: Añadimos el serverDofus al CustomId ---
+            // Formato: accion_puntos_servidor
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`aprobar_${puntosBase}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`doble_${puntosBase}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`aprobar_${puntosBase}_${serverDofus}`)
+                    .setLabel(`Aprobar ${serverDofus} ✅`)
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`doble_${puntosBase}_${serverDofus}`)
+                    .setLabel('Puntos Dobles 🔥')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('rechazar_puntos')
+                    .setLabel('Rechazar ❌')
+                    .setStyle(ButtonStyle.Danger),
             );
 
             await message.reply({
-                content: `📢 **Solicitud de Puntos:**\nValor base: **${puntosBase} pts**\nUsuarios: ${usuariosMencionados.map(u => `<@${u.id}>`).join(', ')}`,
+                content: `📢 **Solicitud de Puntos (${serverDofus}):**\nValor base: **${puntosBase} pts**\nUsuarios: ${usuariosMencionados.map(u => `<@${u.id}>`).join(', ')}`,
                 components: [row]
             });
         }
-    } catch (error) { console.error("Error al procesar evidencia:", error); }
+    } catch (error) { 
+        console.error("Error al procesar evidencia:", error); 
+    }
 });
 
 // --- EVENTO 2: Manejo de Interacciones (Botones, Comandos, Modals) ---
@@ -164,149 +198,169 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         // B. BOTONES
-        if (interaction.isButton()) {
-            const nombreRolAdmin = "comandantes";
-            const esComandante = interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin);
+if (interaction.isButton()) {
+    const nombreRolAdmin = "comandantes";
+    const esComandante = interaction.member.roles.cache.some(role => role.name.toLowerCase() === nombreRolAdmin);
 
-            // --- NUEVO BLOQUE: Consulta de Puesto (Accesible para TODOS) ---
-            if (interaction.customId === 'ver_mi_puesto') {
-                try {
-                    // Obtenemos todos los registros para calcular el puesto real
-                    const todos = await Puntos.findAll({ order: [['defensa', 'DESC']] });
-                    const index = todos.findIndex(u => u.userId === interaction.user.id);
+    // --- NUEVO BLOQUE: Consulta de Puesto (Accesible para TODOS) ---
+    // Ahora detecta si el ID empieza por 'ver_mi_puesto'
+    if (interaction.customId.startsWith('ver_mi_puesto')) {
+        try {
+            // Extraemos el servidor del ID (ej: ver_mi_puesto_SERVER2 -> SERVER2)
+            const partesPuesto = interaction.customId.split('_');
+            const serverConsulta = partesPuesto[3] || 'PRINCIPAL'; 
 
-                    if (index === -1) {
-                        return await interaction.reply({
-                            content: "❌ No tienes puntos registrados aún. ¡Participa en recaudadores para subir!",
-                            flags: [MessageFlags.Ephemeral]
-                        });
-                    }
-
-                    const puesto = index + 1;
-                    const pts = todos[index].defensa;
-                    let derechos = "";
-
-                    // Lógica completa de distribución (T2 y T1)
-                    if (puesto <= 10) derechos = "🔹 **4 Percos T2**";
-                    else if (puesto <= 20) derechos = "🔸 **3 Percos T2**";
-                    else if (puesto <= 30) derechos = "🔸 **2 Percos T2**";
-                    else if (puesto <= 40) derechos = "▫️ **2 Percos T1** (Máx lvl 140)";
-                    else derechos = "▫️ **1 Perco T1** (Máx lvl 140)";
-
-                    return await interaction.reply({
-                        content: `👤 **Consulta de Rango:**\n\n📌 Posición: **#${puesto}**\n📌 Puntos: **${pts} pts**\n📌 Derechos: ${derechos}`,
-                        flags: [MessageFlags.Ephemeral]
-                    });
-                } catch (e) {
-                    console.error("Error en botón ver_mi_puesto:", e);
-                    return await interaction.reply({ content: "Error al consultar puesto.", flags: [MessageFlags.Ephemeral] });
-                }
-            }
-            // -------------------------------------------------------------
-
-            // 1. VALIDACIÓN GLOBAL DE ROL PARA BOTONES ADMINISTRATIVOS
-            // Filtramos: si es un botón de KW o de validación de puntos, exigimos rol.
-            const esBotonAdmin = interaction.customId.startsWith('kw_') ||
-                ['aprobar', 'doble', 'rechazar', 'editar'].some(op => interaction.customId.startsWith(op));
-
-            if (esBotonAdmin && !esComandante) {
-                return await interaction.reply({
-                    content: "❌ Solo los **Comandantes** pueden realizar esta acción.",
-                    ephemeral: true
-                });
-            }
-
-            // --- A PARTIR DE AQUÍ, YA SABEMOS QUE ES COMANDANTE ---
-
-            // 2. Lógica de Modals del Panel (Añadir/Eliminar)
-            if (interaction.customId === 'kw_add') {
-                const modal = new ModalBuilder().setCustomId('modal_kw_add').setTitle('Añadir o Editar Palabra');
-                const wordInput = new TextInputBuilder().setCustomId('kw_word').setLabel("Palabra (ej: atkperco)").setStyle(TextInputStyle.Short).setRequired(true);
-                const pointsInput = new TextInputBuilder().setCustomId('kw_points').setLabel("Puntaje (ej: 5)").setStyle(TextInputStyle.Short).setRequired(true);
-                const categoryInput = new TextInputBuilder().setCustomId('kw_category').setLabel("Categoría (ATAQUE, DEFENSA, TIEMPO)").setStyle(TextInputStyle.Short).setRequired(true);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(wordInput),
-                    new ActionRowBuilder().addComponents(pointsInput),
-                    new ActionRowBuilder().addComponents(categoryInput)
-                );
-                return await interaction.showModal(modal);
-            }
-
-            if (interaction.customId === 'kw_del') {
-                const modal = new ModalBuilder().setCustomId('modal_kw_del').setTitle('Eliminar Palabra Clave');
-                const wordInput = new TextInputBuilder().setCustomId('kw_word_del').setLabel("Escribe la palabra exacta a borrar").setStyle(TextInputStyle.Short).setRequired(true);
-                modal.addComponents(new ActionRowBuilder().addComponents(wordInput));
-                return await interaction.showModal(modal);
-            }
-
-            // 3. Lógica de Validación de Puntos de Evidencias
-            const botonesEspeciales = ['record_york'];
-            if (botonesEspeciales.includes(interaction.customId)) return;
-
-            if (!interaction.message || !interaction.message.reference) return;
-
-            const partes = interaction.customId.split('_');
-            const accion = partes[0];
-            const valorPuntos = partes[1];
-
-            // Revertir / Editar Puntos
-            if (accion === 'editar') {
-                const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-                const usuariosParaRestar = mensajeOriginal.mentions.users;
-                const puntosARestar = parseInt(valorPuntos);
-                const puntosBaseOriginales = partes[2];
-
-                for (const [userId] of usuariosParaRestar) {
-                    const registro = await Puntos.findByPk(userId);
-                    if (registro) await registro.decrement('defensa', { by: puntosARestar });
-                }
-
-                const rowRestaurada = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
-                );
-
-                await interaction.update({
-                    content: `🔄 **Puntos revertidos (-${puntosARestar} pts).** Esperando nueva validación...`,
-                    components: [rowRestaurada]
-                });
-                return await actualizarRankingFijo(interaction.guild);
-            }
-
-            if (accion === 'rechazar') {
-                return await interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
-            }
-
-            // Aprobar / Doble Puntos
-            const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
-            const usuariosParaSumar = mensajeOriginal.mentions.users;
-            if (usuariosParaSumar.size === 0) return;
-
-            let puntosFinales = parseInt(valorPuntos);
-            let mensajeExito = `✅ **Puntos aprobados.**`;
-
-            if (accion === 'doble') {
-                puntosFinales *= 2;
-                mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS!**`;
-            }
-
-            for (const [userId] of usuariosParaSumar) {
-                const [puntosRegistro] = await Puntos.findOrCreate({ where: { userId }, defaults: { defensa: 0 } });
-                await puntosRegistro.increment('defensa', { by: puntosFinales });
-            }
-
-            const rowEditar = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`editar_${puntosFinales}_${valorPuntos}`).setLabel('Corregir / Editar ✏️').setStyle(ButtonStyle.Secondary)
-            );
-
-            await interaction.update({
-                content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Por: ${interaction.user.username}*`,
-                components: [rowEditar]
+            // Buscamos solo los puntos de ese servidor específico
+            const todos = await Puntos.findAll({ 
+                where: { gameServer: serverConsulta }, 
+                order: [['defensa', 'DESC']] 
             });
-            await actualizarRankingFijo(interaction.guild);
+            
+            const index = todos.findIndex(u => u.userId === interaction.user.id);
+
+            if (index === -1) {
+                return await interaction.reply({
+                    content: `❌ No tienes puntos registrados aún en el servidor.`,
+                    flags: [MessageFlags.Ephemeral]
+                });
+            }
+
+            const puesto = index + 1;
+            const pts = todos[index].defensa;
+            let derechos = "";
+
+            // Lógica de derechos (puedes ajustarla si Dakal tiene reglas distintas)
+            if (puesto <= 10) derechos = "🔹 **4 Percos T2**";
+            else if (puesto <= 20) derechos = "🔸 **3 Percos T2**";
+            else if (puesto <= 30) derechos = "🔸 **2 Percos T2**";
+            else if (puesto <= 40) derechos = "▫️ **2 Percos T1** (Máx lvl 140)";
+            else derechos = "▫️ **1 Perco T1** (Máx lvl 140)";
+
+            return await interaction.reply({
+                content: `👤 **Consulta de Rango:**\n\n📌 Posición: **#${puesto}**\n📌 Puntos: **${pts} pts**\n📌 Derechos: ${derechos}`,
+                flags: [MessageFlags.Ephemeral]
+            });
+        } catch (e) {
+            console.error("Error en botón ver_mi_puesto:", e);
+            return await interaction.reply({ content: "Error al consultar puesto.", flags: [MessageFlags.Ephemeral] });
         }
+    }
+
+    // 1. VALIDACIÓN GLOBAL DE ROL
+    const esBotonAdmin = interaction.customId.startsWith('kw_') ||
+        ['aprobar', 'doble', 'rechazar', 'editar'].some(op => interaction.customId.startsWith(op));
+
+    if (esBotonAdmin && !esComandante) {
+        return await interaction.reply({
+            content: "❌ Solo los **Comandantes** pueden realizar esta acción.",
+            flags: [MessageFlags.Ephemeral]
+        });
+    }
+
+    // --- MANEJO DE IDS DINÁMICOS (Accion_Puntos_Servidor) ---
+    const partes = interaction.customId.split('_');
+    const accion = partes[0];
+    const valorPuntos = partes[1];
+    const serverDofus = partes[2] || 'PRINCIPAL'; // Capturamos el servidor del botón
+
+    // 2. Lógica de Modals (Añadir/Eliminar KW)
+    if (interaction.customId === 'kw_add') {
+        const modal = new ModalBuilder().setCustomId('modal_kw_add').setTitle('Añadir o Editar Palabra');
+        const wordInput = new TextInputBuilder().setCustomId('kw_word').setLabel("Palabra").setStyle(TextInputStyle.Short).setRequired(true);
+        const pointsInput = new TextInputBuilder().setCustomId('kw_points').setLabel("Puntaje").setStyle(TextInputStyle.Short).setRequired(true);
+        const categoryInput = new TextInputBuilder().setCustomId('kw_category').setLabel("Categoría").setStyle(TextInputStyle.Short).setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(wordInput),
+            new ActionRowBuilder().addComponents(pointsInput),
+            new ActionRowBuilder().addComponents(categoryInput)
+        );
+        return await interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'kw_del') {
+        const modal = new ModalBuilder().setCustomId('modal_kw_del').setTitle('Eliminar Palabra Clave');
+        const wordInput = new TextInputBuilder().setCustomId('kw_word_del').setLabel("Palabra exacta a borrar").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(wordInput));
+        return await interaction.showModal(modal);
+    }
+
+    // 3. Lógica de Validación de Puntos
+    const botonesEspeciales = ['record_york', 'confirmar_borrado', 'cancelar_borrado'];
+    if (botonesEspeciales.includes(interaction.customId)) return;
+
+    if (!interaction.message || !interaction.message.reference) return;
+
+    // --- REVERTIR / EDITAR PUNTOS ---
+    if (accion === 'editar') {
+        const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+        const usuariosParaRestar = mensajeOriginal.mentions.users;
+        const puntosARestar = parseInt(valorPuntos);
+        const puntosBaseOriginales = partes[2];
+        const serverParaRevertir = partes[3] || 'PRINCIPAL'; // En editar, el server es la 4ta parte
+
+        for (const [userId] of usuariosParaRestar) {
+            const registro = await Puntos.findOne({ where: { userId, gameServer: serverParaRevertir } });
+            if (registro) await registro.decrement('defensa', { by: puntosARestar });
+        }
+
+        const rowRestaurada = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}_${serverParaRevertir}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}_${serverParaRevertir}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
+        );
+
+        await interaction.update({
+            content: `🔄 **Puntos revertidos en ${serverParaRevertir} (-${puntosARestar} pts).** Esperando nueva validación...`,
+            components: [rowRestaurada]
+        });
+        return await actualizarRankingFijo(interaction.guild, serverParaRevertir);
+    }
+
+    if (accion === 'rechazar') {
+        return await interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
+    }
+
+    // --- APROBAR / DOBLE PUNTOS ---
+    if (accion === 'aprobar' || accion === 'doble') {
+        const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
+        const usuariosParaSumar = mensajeOriginal.mentions.users;
+        if (usuariosParaSumar.size === 0) return;
+
+        let puntosFinales = parseInt(valorPuntos);
+        let mensajeExito = `✅ **Puntos aprobados (${serverDofus})**`;
+
+        if (accion === 'doble') {
+            puntosFinales *= 2;
+            mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS! (${serverDofus})**`;
+        }
+
+        for (const [userId] of usuariosParaSumar) {
+            // Buscamos o creamos el registro para ese usuario en ese servidor específico
+            const [puntosRegistro] = await Puntos.findOrCreate({ 
+                where: { userId, gameServer: serverDofus }, 
+                defaults: { defensa: 0, gameServer: serverDofus } 
+            });
+            await puntosRegistro.increment('defensa', { by: puntosFinales });
+        }
+
+        // El botón de editar ahora también debe llevar el servidor para saber de dónde restar
+        const rowEditar = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`editar_${puntosFinales}_${valorPuntos}_${serverDofus}`)
+                .setLabel('Corregir / Editar ✏️')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.update({
+            content: `${mensajeExito}\nSe sumaron **${puntosFinales} pts** a: ${usuariosParaSumar.map(u => `<@${u.id}>`).join(', ')}\n*Por: ${interaction.user.username}*`,
+            components: [rowEditar]
+        });
+
+        // Actualizamos el ranking pasando el servidor
+        await actualizarRankingFijo(interaction.guild, serverDofus);
+    }
+}
 
         // C. SUBMIT DE MODALS
         if (interaction.isModalSubmit()) {
@@ -376,18 +430,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// --- FUNCIÓN RANKING ---
-async function actualizarRankingFijo(guild) {
-    const CANAL_ID = process.env.RANKING_CHANNEL_ID;
-    const MENSAJE_ID = process.env.RANKING_MESSAGE_ID;
-    if (!CANAL_ID || !MENSAJE_ID) return;
+// --- FUNCIÓN RANKING ACTUALIZADA ---
+async function actualizarRankingFijo(guild, serverDofus = 'PRINCIPAL') {
+    // 1. Mapeo de IDs por servidor (Configura estos IDs en tu .env)
+    const configRankings = {
+        'DAKAL': {
+            canal: process.env.RANKING_CHANNEL_ID_DAKAL,
+            mensaje: process.env.RANKING_MESSAGE_ID_DAKAL,
+            color: 0xf1c40f, // Dorado
+            titulo: '🏆 Top 30 - Dakal'
+        },
+        'MIKHAL': {
+            canal: process.env.RANKING_CHANNEL_ID_MIKHAL,
+            mensaje: process.env.RANKING_MESSAGE_ID_MIKHAL,
+            color: 0x3498db, // Azul
+            titulo: '🏆 Top 30 - Mikhal'
+        }
+    };
+
+    const config = configRankings[serverDofus];
+    if (!config || !config.canal || !config.mensaje) {
+        console.warn(`Configuración de ranking no encontrada para: ${serverDofus}`);
+        return;
+    }
 
     try {
-        const canal = await guild.channels.fetch(CANAL_ID);
-        const mensaje = await canal.messages.fetch(MENSAJE_ID);
+        const canal = await guild.channels.fetch(config.canal);
+        const mensaje = await canal.messages.fetch(config.mensaje);
 
-        // LIMITAMOS A LOS MEJORES 30
+        // 2. FILTRAMOS POR EL SERVIDOR DE JUEGO CORRESPONDIENTE
         const listaCompleta = await Puntos.findAll({
+            where: { gameServer: serverDofus }, // <--- CLAVE: Solo puntos de este servidor
             order: [['defensa', 'DESC']],
             limit: 30
         });
@@ -402,7 +475,6 @@ async function actualizarRankingFijo(guild) {
             const puesto = index + 1;
             let derechos = "";
 
-            // Tu lógica de distribución
             if (puesto <= 10) derechos = "🔹 **4 T2**";
             else if (puesto <= 20) derechos = "🔸 **3 T2**";
             else if (puesto <= 30) derechos = "🔸 **2 T2**";
@@ -411,35 +483,37 @@ async function actualizarRankingFijo(guild) {
 
             let medalla = (puesto === 1) ? "🥇 " : (puesto === 2) ? "🥈 " : (puesto === 3) ? "🥉 " : `${puesto}. `;
 
-            // Formato compacto para que quepan los 30 sin problemas
             return `${medalla}**${nombre}** — ${u.defensa} pts | ${derechos}`;
         });
 
         const listaFinal = await Promise.all(listaPromesas);
 
         const embed = new EmbedBuilder()
-            .setColor(0xf1c40f)
-            .setTitle('🏆 Top 30 Guerreros - Club Asesinos')
+            .setColor(config.color)
+            .setTitle(config.titulo)
             .setThumbnail('attachment://Club_asesinos.png')
-            .setDescription(listaFinal.join('\n') || "No hay datos.")
+            .setDescription(listaFinal.join('\n') || "No hay datos en esta temporada.")
             .addFields({
                 name: '📌 Info Niveles y Percos',
-                value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Niveles 140 o menos.\n\n*Si no apareces en el Top 30, pulsa el botón de abajo.*',
+                value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Niveles 140 o menos.\n\n*Pulsa el botón de abajo para ver tu posición personal.*',
                 inline: false
             })
             .setTimestamp();
 
-        // El botón mágico para los que no salen en el Top
+        // El botón mágico ahora debe llevar el servidor en el customId
+        // para que la consulta sepa de qué server buscar los datos.
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('ver_mi_puesto')
+                .setCustomId(`ver_mi_puesto_${serverDofus}`) // <--- ID dinámico
                 .setLabel('Ver mi posición 👤')
                 .setStyle(ButtonStyle.Primary)
         );
 
         await mensaje.edit({ embeds: [embed], components: [row] });
 
-    } catch (error) { console.error('Error Ranking:', error); }
+    } catch (error) { 
+        console.error(`Error actualizando ranking de ${serverDofus}:`, error); 
+    }
 }
 
 async function actualizarPanelAutomatico(interaction) {
