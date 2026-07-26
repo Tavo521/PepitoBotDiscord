@@ -229,12 +229,11 @@ if (interaction.isButton()) {
             const pts = todos[index].defensa;
             let derechos = "";
 
-            // Lógica de derechos (puedes ajustarla si Dakal tiene reglas distintas)
-            if (puesto <= 10) derechos = "🔹 **4 Percos T2**";
-            else if (puesto <= 20) derechos = "🔸 **3 Percos T2**";
-            else if (puesto <= 30) derechos = "🔸 **2 Percos T2**";
-            else if (puesto <= 40) derechos = "▫️ **2 Percos T1** (Máx lvl 140)";
-            else derechos = "▫️ **1 Perco T1** (Máx lvl 140)";
+            // Lógica de derechos por ranking
+            if (puesto <= 5) derechos = "🥇 **8 Percos**";
+            else if (puesto <= 10) derechos = "🥈 **5 Percos**";
+            else if (puesto <= 20) derechos = "🥉 **4 Percos**";
+            else derechos = "❌ **Sin Percos**";
 
             return await interaction.reply({
                 content: `👤 **Consulta de Rango:**\n\n📌 Posición: **#${puesto}**\n📌 Puntos: **${pts} pts**\n📌 Derechos: ${derechos}`,
@@ -475,11 +474,10 @@ async function actualizarRankingFijo(guild, serverDofus = 'PRINCIPAL') {
             const puesto = index + 1;
             let derechos = "";
 
-            if (puesto <= 10) derechos = "🔹 **4 T2**";
-            else if (puesto <= 20) derechos = "🔸 **3 T2**";
-            else if (puesto <= 30) derechos = "🔸 **2 T2**";
-            else if (puesto <= 40) derechos = "▫️ **2 T1**";
-            else derechos = "▫️ **1 T1**";
+            if (puesto <= 5) derechos = "🔹 **8 Percos**";
+            else if (puesto <= 10) derechos = "🔸 **5 Percos**";
+            else if (puesto <= 20) derechos = "▫️ **4 Percos**";
+            else derechos = "❌ **Sin Percos**";
 
             let medalla = (puesto === 1) ? "🥇 " : (puesto === 2) ? "🥈 " : (puesto === 3) ? "🥉 " : `${puesto}. `;
 
@@ -494,8 +492,8 @@ async function actualizarRankingFijo(guild, serverDofus = 'PRINCIPAL') {
             .setThumbnail('attachment://Club_asesinos.png')
             .setDescription(listaFinal.join('\n') || "No hay datos en esta temporada.")
             .addFields({
-                name: '📌 Info Niveles y Percos',
-                value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Niveles 140 o menos.\n\n*Pulsa el botón de abajo para ver tu posición personal.*',
+                name: '📌 Distribución de Percos',
+                value: '🥇 **Top 1-5:** 8 Percos\n🥈 **Top 6-10:** 5 Percos\n🥉 **Top 11-20:** 4 Percos\n\n*Pulsa el botón de abajo para ver tu posición personal.*',
                 inline: false
             })
             .setTimestamp();

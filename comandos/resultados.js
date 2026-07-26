@@ -37,14 +37,15 @@ module.exports = {
                     nombreDisplay = `ID:${fila.userId}`;
                 }
 
-                // --- LÓGICA DE RANGOS ACTUALIZADA ---
-                let rango = "Sin Rango"; 
-                if (fila.defensa >= 160) {
-                    rango = "T3 6 Percos zona 1-200";
-                } else if (fila.defensa >= 80) { // De 80 a 159
-                    rango = "T2 2 Perco zona 1-160";
-                } else if (fila.defensa >= 1) { // De 1 a 79
-                    rango = "T1 1 Percos zona 1-120";
+                // --- LÓGICA DE DERECHOS POR RANKING ---
+                let rango = "Sin Percos"; 
+                const puesto = i + 1;
+                if (puesto <= 5) {
+                    rango = "8 Percos";
+                } else if (puesto <= 10) {
+                    rango = "5 Percos";
+                } else if (puesto <= 20) {
+                    rango = "4 Percos";
                 }
 
                 // Formateo de columnas (ajustado para nombres largos de rango)

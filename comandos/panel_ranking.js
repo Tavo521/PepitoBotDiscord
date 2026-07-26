@@ -46,9 +46,9 @@ module.exports = {
                 }
 
                 const puesto = index + 1;
-                let derechos = (puesto <= 10) ? "🔹 **4 :horse: - T2**" : 
-                               (puesto <= 20) ? "🔸 **3 :horse: - T2**" : 
-                               (puesto <= 30) ? "🔸 **2 :horse:  T2**" : "▫️ **T1**";
+                let derechos = (puesto <= 5) ? "🔹 **8 Percos**" : 
+                               (puesto <= 10) ? "🔸 **5 Percos**" : 
+                               (puesto <= 20) ? "▫️ **4 Percos**" : "❌ **Sin Percos**";
 
                 let medalla = (puesto === 1) ? "🥇 " : (puesto === 2) ? "🥈 " : (puesto === 3) ? "🥉 " : `${puesto}. `;
                 return `${medalla}**${nombre}** — ${u.defensa} pts | ${derechos}`;
@@ -64,12 +64,12 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor(serverDofus === 'PRINCIPAL' ? 0xf1c40f : 0x3498db)
-                .setTitle(`🏆 Top 30 Guerreros - ${nombreDisplay}`)
+                .setTitle(`🏆 Top 20 Guerreros - ${nombreDisplay}`)
                 .setThumbnail('attachment://Club_asesinos.png')
                 .setDescription(rankingTexto)
                 .addFields({
-                    name: '📌 Información de Rangos',
-                    value: '✅ **T2:** Todos los niveles.\n⚠️ **T1:** Solo niveles 140 o menos.',
+                    name: '📌 Distribución de Percos',
+                    value: '🥇 **Top 1-5:** 8 Percos\n🥈 **Top 6-10:** 5 Percos\n🥉 **Top 11-20:** 4 Percos',
                     inline: false
                 })
                 .setFooter({ text: `Ranking oficial de ${nombreDisplay}` })
