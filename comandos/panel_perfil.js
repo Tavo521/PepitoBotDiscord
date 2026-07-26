@@ -23,25 +23,13 @@ module.exports = {
             const miembro = await interaction.guild.members.fetch(interaction.user.id);
             const nombreAMostrar = miembro.displayName;
 
-            // 4. Definición de Franjas (3 Niveles)
-            const franjas = [
-                { nombre: 'PvP T1 Perco (Zona 1 a 120 🐴)', min: 0, cant: '1 Perco' },
-                { nombre: 'PvP T2 Percos (Zonas 1 a 160 🐴)', min: 80, cant: '2 Percos' },
-                { nombre: 'PvP T3 Percos (Zonas 1 a 200 🐴)', min: 160, cant: '6 Percos' }
-            ];
+            // 4. Determinar derechos por Ranking
+            let derechos = "Sin Percos";
+            if (posicion >= 1 && posicion <= 5) derechos = "8 Percos";
+            else if (posicion <= 10) derechos = "5 Percos";
+            else if (posicion <= 20) derechos = "4 Percos";
 
-            // 5. Lógica para determinar Rango Actual y Próximo Objetivo
-            let rangoActual = franjas[0];
-            let proximoRango = null;
-
-            for (let i = 0; i < franjas.length; i++) {
-                if (puntosActuales >= franjas[i].min) {
-                    rangoActual = franjas[i];
-                    proximoRango = franjas[i + 1] || null;
-                }
-            }
-
-            // 6. Preparar el Embed
+            // 5. Preparar el Embed
             const imagePath = path.join(__dirname, '..', 'imagenes', 'Club_asesinos.png');
             const file = new AttachmentBuilder(imagePath);
 
@@ -52,20 +40,8 @@ module.exports = {
                 .addFields(
                     { name: '⭐ Puntos Totales', value: `**${puntosActuales}** pts`, inline: true },
                     { name: '🏆 Ranking', value: `#${posicion > 0 ? posicion : 'N/A'}`, inline: true },
-                    { name: '🛡️ Beneficio Actual', value: `**${rangoActual.cant}**`, inline: true },
-                    { name: '📍 Rango Actual', value: `${rangoActual.nombre}`, inline: false }
+                    { name: '🛡️ Beneficio Actual', value: `**${derechos}**`, inline: true }
                 );
-
-            // Si hay un siguiente nivel, calcular cuánto falta
-            if (proximoRango) {
-                const falta = proximoRango.min - puntosActuales;
-                embed.addFields({ 
-                    name: `🚀 Siguiente Objetivo: ${proximoRango.cant}`, 
-                    value: `Te faltan **${falta}** puntos para alcanzar: \n*${proximoRango.nombre}*` 
-                });
-            } else {
-                embed.addFields({ name: '🔥 Estatus', value: '¡Has alcanzado el rango máximo de participación!' });
-            }
 
             embed.setFooter({ text: 'Consulta tus puntos con /panel_perfil' })
                  .setTimestamp();

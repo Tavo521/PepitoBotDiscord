@@ -29,22 +29,25 @@ module.exports = {
                 .setDescription(`¡Un total de **${listaUsuarios.length}** miembros registrados!`)
                 .setThumbnail('attachment://Club_asesinos.png'); // Usa el logo de tu gremio
 
-            // 3. Definición de Franjas
+            // 3. Definición de Franjas por Ranking
             const franjas = [
-                { nombre: 'PvP T1 Perco (Zona 1 a 120 🐴)', min: 0, cant: '1 Perco' },
-                { nombre: 'PvP T2 Percos (Zonas 1 a 160 🐴)', min: 80, cant: '2 Percos' },
-                { nombre: 'PvP T3 Percos (Zonas 1 a 180 🐴)', min: 160, cant: '6 Percos' }
+                { nombre: '🥇 Top 1-5 (8 Percos)', minPos: 1, maxPos: 5 },
+                { nombre: '🥈 Top 6-10 (5 Percos)', minPos: 6, maxPos: 10 },
+                { nombre: '🥉 Top 11-20 (4 Percos)', minPos: 11, maxPos: 20 }
             ];
 
+            // Consultar Top 20
+            const todosLosUsuarios = await Puntos.findAll({
+                order: [['defensa', 'DESC']],
+                limit: 20
+            });
+
             franjas.forEach(franja => {
-                const usuariosEnFranja = listaUsuarios.filter(u => 
-                    u.defensa >= franja.min && 
-                    (franjas.find(f => f.min > franja.min) ? u.defensa < franjas.find(f => f.min > franja.min).min : true)
-                );
+                const usuariosEnFranja = todosLosUsuarios.slice(franja.minPos - 1, franja.maxPos);
 
                 let listaTexto = usuariosEnFranja.length > 0 
-                    ? usuariosEnFranja.map((u, i) => `\`0${i + 1}\` <@${u.userId}> ➔ **${u.defensa}** pts`).join('\n')
-                    : '*Aún no hay participantes en esta franja.*';
+                    ? usuariosEnFranja.map((u, i) => `\`#${franja.minPos + i}\` <@${u.userId}> ➔ **${u.defensa}** pts`).join('\n')
+                    : '*Sin miembros en este puesto.*';
 
                 embed.addFields({ name: franja.nombre, value: listaTexto });
             });

@@ -32,20 +32,14 @@ module.exports = {
                 { 
                     name: '🏆 Distribución de Percos (Por Ranking)', 
                     value: 'Tu capacidad de poner percos se basa en tu puesto actual:\n' +
-                           '🥇 **Top 1-10:** 4 Percos T2\n' +
-                           '🥈 **Top 11-20:** 3 Percos T2\n' +
-                           '🥉 **Top 21-30:** 2 Percos T2\n' +
-                           '▫️ **Top 31-40:** 2 Percos T1 (Nivel ≤140)\n' +
-                           '▫️ **41 en adelante:** 1 Perco T1 (Nivel ≤140)'
+                           '🥇 **Top 1-5:** 8 Percos\n' +
+                           '🥈 **Top 6-10:** 5 Percos\n' +
+                           '🥉 **Top 11-20:** 4 Percos\n' +
+                           '▫️ **21 en adelante:** Sin Percos'
                 },
                 { 
                     name: '👤 Consulta Rápida', 
                     value: 'En el canal de ranking, usa el botón **"Ver mi posición"** para recibir un mensaje privado con tus puntos exactos y tus derechos actuales.'
-                },
-                { 
-                    name: '⚠️ Definiciones T1/T2', 
-                    value: '• **T2:** Todas las franjas de nivel.\n' +
-                           '• **T1:** Exclusivo para niveles 140 o menores.'
                 }
             )
             .setFooter({ text: 'Club Asesinos - La constancia es nuestra fuerza', iconURL: 'attachment://Club_asesinos.png' })
