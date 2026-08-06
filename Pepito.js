@@ -172,6 +172,10 @@ client.on("messageCreate", async (message) => {
                     .setLabel('Puntos Dobles 🔥')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
+                    .setCustomId(`triple_${puntosBase}_${serverDofus}`)
+                    .setLabel('Puntos Triples ⚡')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
                     .setCustomId('rechazar_puntos')
                     .setLabel('Rechazar ❌')
                     .setStyle(ButtonStyle.Danger),
@@ -247,7 +251,7 @@ if (interaction.isButton()) {
 
     // 1. VALIDACIÓN GLOBAL DE ROL
     const esBotonAdmin = interaction.customId.startsWith('kw_') ||
-        ['aprobar', 'doble', 'rechazar', 'editar'].some(op => interaction.customId.startsWith(op));
+        ['aprobar', 'doble', 'triple', 'rechazar', 'editar'].some(op => interaction.customId.startsWith(op));
 
     if (esBotonAdmin && !esComandante) {
         return await interaction.reply({
@@ -306,6 +310,7 @@ if (interaction.isButton()) {
         const rowRestaurada = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`aprobar_${puntosBaseOriginales}_${serverParaRevertir}`).setLabel('Aprobar ✅').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`doble_${puntosBaseOriginales}_${serverParaRevertir}`).setLabel('Puntos Dobles 🔥').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`triple_${puntosBaseOriginales}_${serverParaRevertir}`).setLabel('Puntos Triples ⚡').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('rechazar_puntos').setLabel('Rechazar ❌').setStyle(ButtonStyle.Danger),
         );
 
@@ -320,8 +325,8 @@ if (interaction.isButton()) {
         return await interaction.update({ content: '❌ **Solicitud rechazada.**', components: [] });
     }
 
-    // --- APROBAR / DOBLE PUNTOS ---
-    if (accion === 'aprobar' || accion === 'doble') {
+    // --- APROBAR / DOBLE / TRIPLE PUNTOS ---
+    if (accion === 'aprobar' || accion === 'doble' || accion === 'triple') {
         const mensajeOriginal = await interaction.channel.messages.fetch(interaction.message.reference.messageId);
         const usuariosParaSumar = mensajeOriginal.mentions.users;
         if (usuariosParaSumar.size === 0) return;
@@ -332,6 +337,9 @@ if (interaction.isButton()) {
         if (accion === 'doble') {
             puntosFinales *= 2;
             mensajeExito = `🔥 **¡PUNTOS DOBLES APROBADOS! (${serverDofus})**`;
+        } else if (accion === 'triple') {
+            puntosFinales *= 3;
+            mensajeExito = `⚡ **¡PUNTOS TRIPLES APROBADOS! (${serverDofus})**`;
         }
 
         for (const [userId] of usuariosParaSumar) {
