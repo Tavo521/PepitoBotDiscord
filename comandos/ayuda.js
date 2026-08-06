@@ -24,10 +24,11 @@ module.exports = {
                            '*Nota: Los ataques solo cuentan en objetivos válidos (Okumo/Noctalys).* '
                 },
                 { 
-                    name: '🔘 Validación y Dobles', 
+                    name: '🔘 Validación de Puntos', 
                     value: 'Un **Comandante** validará tu mensaje:\n' +
-                           '✅ **Aprobar:** Suma los puntos base.\n' +
-                           '🔥 **Puntos Dobles:** ¡Doble recompensa por esfuerzo extra!'
+                           '✅ **Aprobar:** Suma los puntos base (x1).\n' +
+                           '🔥 **Puntos Dobles:** Recompensa doble (x2).\n' +
+                           '⚡ **Puntos Triples:** Recompensa triple (x3).'
                 },
                 { 
                     name: '🏆 Distribución de Percos (Por Ranking)', 
